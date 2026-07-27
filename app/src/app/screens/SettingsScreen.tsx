@@ -191,6 +191,35 @@ function Card(props: {
 }
 
 /**
+ * 拉取 provider 模型列表：OpenAI 兼容走 GET {baseUrl}/models（baseUrl 已含 /v1），
+ * Anthropic 走 GET {baseUrl}/v1/models（x-api-key 头）。返回 data[].id 排序去重。
+ * 客户端直连上游，凭据不出本机。
+ */
+async function fetchModelList(
+  protocol: "openai" | "anthropic",
+  baseUrl: string,
+  apiKey: string,
+): Promise<string[]> {
+  const root = baseUrl.trim().replace(/\/+$/, "");
+  const url = protocol === "anthropic" ? `${root}/v1/models` : `${root}/models`;
+  const headers: Record<string, string> =
+    protocol === "anthropic"
+      ? { "x-api-key": apiKey, "anthropic-version": "2023-06-01" }
+      : { Authorization: `Bearer ${apiKey}` };
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 15_000);
+  try {
+    const res = await fetch(url, { headers, signal: ctrl.signal });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = (await res.json()) as { data?: ReadonlyArray<{ id?: string }> };
+    const ids = (json.data ?? []).map((m) => m.id).filter((x): x is string => !!x);
+    return Array.from(new Set(ids)).sort();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
  * 模型提供商配置区：协议 / baseUrl / apiKey / model。独立运行模式下这是唯一模型来源，
  * 客户端直连上游。apiKey 仅存本机，保存后经 _auth 通道下发 Node 侧内存缓存。
  */
@@ -204,6 +233,9 @@ function ProviderSection(props: {
   const [apiKey, setApiKey] = useState(config?.apiKey ?? "");
   const [model, setModel] = useState(config?.model ?? "");
   const [saved, setSaved] = useState(false);
+  const [models, setModels] = useState<readonly string[]>([]);
+  const [loadingModels, setLoadingModels] = useState(false);
+  const [fetchError, setFetchError] = useState("");
 
   const configKey = `${config?.protocol ?? ""}|${config?.baseUrl ?? ""}|${config?.apiKey ?? ""}|${config?.model ?? ""}`;
   useEffect(() => {
@@ -211,7 +243,26 @@ function ProviderSection(props: {
     setBaseUrl(config?.baseUrl ?? "");
     setApiKey(config?.apiKey ?? "");
     setModel(config?.model ?? "");
+    setModels([]);
+    setFetchError("");
   }, [configKey]); // eslint-disable-line react-hooks/exhaustive-deps -- 仅在外部配置真正变化时回灌
+
+  const canFetch = baseUrl.trim() !== "" && !loadingModels;
+
+  const handleFetchModels = async (): Promise<void> => {
+    if (!canFetch) return;
+    setLoadingModels(true);
+    setFetchError("");
+    try {
+      const list = await fetchModelList(protocol, baseUrl, apiKey.trim());
+      setModels(list);
+      if (list.length === 0) setFetchError("未返回任何模型，请手动填写");
+    } catch (e) {
+      setFetchError(`获取失败：${e instanceof Error ? e.message : String(e)}，可手动填写`);
+    } finally {
+      setLoadingModels(false);
+    }
+  };
 
   const canSave = baseUrl.trim() !== "" && apiKey.trim() !== "" && model.trim() !== "";
 
@@ -268,12 +319,46 @@ function ProviderSection(props: {
           autoCorrect={false}
         />
       </View>
-      <MemoryField
-        label="模型"
-        value={model}
-        onChangeText={setModel}
-        placeholder={protocol === "openai" ? "gpt-4o-mini" : "claude-3-5-sonnet-latest"}
-      />
+      <View style={styles.memRow}>
+        <Text style={styles.memLabel}>模型</Text>
+        <TextInput
+          style={styles.memInput}
+          value={model}
+          onChangeText={setModel}
+          placeholder={protocol === "openai" ? "gpt-4o-mini" : "claude-3-5-sonnet-latest"}
+          placeholderTextColor={t.colors.placeholder}
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+      </View>
+      <TouchableOpacity
+        style={[styles.fetchModelsBtn, !canFetch && styles.fetchModelsBtnDisabled]}
+        onPress={handleFetchModels}
+        activeOpacity={0.7}
+        disabled={!canFetch}
+      >
+        <Text style={styles.fetchModelsText}>
+          {loadingModels ? "获取中…" : "获取模型列表"}
+        </Text>
+      </TouchableOpacity>
+      {fetchError !== "" && <Text style={styles.memClearHint}>{fetchError}</Text>}
+      {models.length > 0 && (
+        <View style={styles.modelChipGrid}>
+          {models.map((m) => {
+            const active = model === m;
+            return (
+              <TouchableOpacity
+                key={m}
+                style={[styles.modelChip, active && styles.modelChipActive]}
+                onPress={() => setModel(m)}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.modelChipText, active && styles.voiceChipTextActive]}>{m}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      )}
 
       <View style={styles.memActions}>
         <TouchableOpacity style={styles.memClearBtn} onPress={handleClear} activeOpacity={0.7}>
@@ -643,6 +728,39 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     paddingLeft: 2,
   },
+  fetchModelsBtn: {
+    borderRadius: t.radius.sm,
+    paddingVertical: 10,
+    marginBottom: 10,
+    backgroundColor: t.colors.paperDeep,
+    borderWidth: 1,
+    borderColor: t.colors.teal,
+    alignItems: "center",
+  },
+  fetchModelsBtnDisabled: {
+    borderColor: t.colors.softGoldBorder,
+    opacity: 0.5,
+  },
+  fetchModelsText: { color: t.colors.teal, fontSize: 14, fontWeight: "700" },
+  modelChipGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 10,
+  },
+  modelChip: {
+    backgroundColor: t.colors.paperDeep,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: t.colors.softGoldBorder,
+  },
+  modelChipActive: {
+    backgroundColor: t.colors.cinnabar,
+    borderColor: t.colors.cinnabar,
+  },
+  modelChipText: { color: t.colors.ink, fontSize: 13, fontWeight: "600" },
   memActions: { flexDirection: "row", gap: 12, marginTop: 4 },
   memClearBtn: {
     flex: 1,
