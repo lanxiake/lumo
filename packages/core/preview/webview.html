@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>pet-core Live2D WebView runtime</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: transparent;
+        overflow: hidden;
+      }
+      #stage {
+        display: block;
+        width: 100vw;
+        height: 100vh;
+      }
+      #hint {
+        position: fixed;
+        left: 8px;
+        bottom: 8px;
+        font: 12px/1.4 system-ui, sans-serif;
+        color: #888;
+        white-space: pre;
+      }
+    </style>
+    <!-- 供应端 UMD 顺序：cubism core → pixi → pixi-live2d-display（依赖 window.PIXI） -->
+    <script src="/vendor/live2dcubismcore.min.js"></script>
+    <script src="/vendor/pixi.min.js"></script>
+    <script src="/vendor/live2d-cubism4.min.js"></script>
+  </head>
+  <body>
+    <canvas id="stage"></canvas>
+    <div id="hint">加载中…</div>
+    <script type="module" src="./webview-runtime.js"></script>
+  </body>
+</html>

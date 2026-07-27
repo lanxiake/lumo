@@ -1,0 +1,29 @@
+{
+  "name": "lumo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Lumo — an open-source AI virtual companion for kids: learning, coding, music, drawing, games and more. Bring your own OpenAI/Anthropic model, runs on-device.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "android": "pnpm --filter @lumo/app android",
+    "ios": "pnpm --filter @lumo/app ios",
+    "start": "pnpm --filter @lumo/app start",
+    "setup:sherpa": "pnpm --filter @lumo/app setup:sherpa"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "packageManager": "pnpm@9.0.0",
+  "pnpm": {
+    "overrides": {
+      "@mariozechner/pi-ai": "0.50.7",
+      "@mariozechner/pi-agent-core": "0.50.7"
+    },
+    "patchedDependencies": {
+      "@mariozechner/pi-ai@0.50.7": "patches/@mariozechner__pi-ai@0.50.7.patch"
+    }
+  }
+}

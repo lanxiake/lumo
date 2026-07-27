@@ -1,0 +1,28 @@
+{
+  "name": "@lumo/app-node-runtime",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Lumo 端内 nodejs-mobile 宿主运行时：复用 agent-runtime/host-kit，端上跑 Agent loop，LLM 直连自配 provider，TTS 走 Edge 在线合成",
+  "main": "src/index.ts",
+  "scripts": {
+    "build": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest watch"
+  },
+  "dependencies": {
+    "@lumo/agent-runtime": "workspace:*",
+    "@lumo/core": "workspace:*",
+    "msedge-tts": "^2.0.5"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.3.2",
+    "@types/react": "18.2.6",
+    "jsdom": "^28.1.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.8.3",
+    "vitest": "^4.0.18"
+  }
+}

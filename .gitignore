@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Secrets / local env (KEEP .env.build committed — it holds only non-secret build config)
+.env
+.env.local
+.env.*.local
+*.pem
+*.keystore
+!debug.keystore
+
+# Build output
+dist/
+build/
+*.tsbuildinfo
+app/node-runtime/dist/
+
+# React Native / Metro
+.metro-health-check*
+app/android/app/build/
+app/android/build/
+app/android/.gradle/
+app/android/local.properties
+app/ios/build/
+app/ios/Pods/
+app/ios/*.xcworkspace/xcuserdata/
+*.hprof
+
+# nodejs-mobile bundle (generated at build)
+app/nodejs-assets/nodejs-project/
+
+# Sherpa ONNX models (downloaded via setup:sherpa, too large to commit)
+app/assets/sherpa/**/*.onnx
+app/assets/sherpa/**/*.bin
+
+# Logs
+*.log
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

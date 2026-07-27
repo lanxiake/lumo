@@ -1,0 +1,7 @@
+packages:
+  - packages/*
+  - app
+  - app/node-runtime
+
+onlyBuiltDependencies:
+  - esbuild
