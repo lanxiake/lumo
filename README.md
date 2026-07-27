@@ -1,4 +1,4 @@
-<!-- 语言 / Language: English | [简体中文](./README.zh-CN.md) -->
+**English** | [简体中文](./README.zh-CN.md)
 
 # Lumo
 
@@ -79,6 +79,38 @@ disable web search.
 pnpm typecheck   # type-check all packages
 pnpm test        # run unit tests
 ```
+
+## Roadmap
+
+> The items below are **planned directions**, not yet implemented. They describe
+> where Lumo is heading as a learning companion.
+
+### 1. Curriculum knowledge graph & personalized learning
+
+Turn the Chinese national curriculum — primary, junior high, senior high, and
+university — into a structured **knowledge graph**, then use it to guide each
+child's learning path.
+
+- **Knowledge graph** — model each subject's concepts as nodes with explicit
+  **prerequisite dependencies** (what must be understood before what), aligned to
+  grade level and textbook chapters.
+- **Knowledge assessment** — lightweight, conversational quizzes that estimate a
+  child's mastery per concept, feeding a per-learner mastery map.
+- **Adaptive learning plans** — walk the dependency graph from what a child
+  already knows toward new goals, generating a personalized, correctly-ordered
+  study plan and surfacing the right next concept at the right time.
+
+### 2. Stable & mature dynamic content rendering
+
+Harden the way Agent-generated interactive content (A2UI components, HTML/SVG/JS
+artifacts, mini-games) is rendered and orchestrated on-device.
+
+- **More robust rendering pipeline** — a mature, well-tested render/orchestration
+  path with fewer edge-case bugs and predictable lifecycle handling.
+- **Lower memory footprint** — tighter WebView/asset lifecycle management to
+  reduce memory pressure and process reclamation on mobile devices.
+- **Higher production quality** — consistent behavior across devices for a polished,
+  reliable end-product experience.
 
 ## Privacy
 
