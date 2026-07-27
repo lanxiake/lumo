@@ -12,6 +12,8 @@
     "emulator:dev": "node scripts/emulator-dev.mjs",
     "emulator:dev:no-build": "node scripts/emulator-dev.mjs --no-build",
     "emulator:dev:logs": "node scripts/emulator-dev.mjs --logs",
+    "package:apk": "node scripts/package-apk.mjs",
+    "package:apk:install": "node scripts/package-apk.mjs --install",
     "preandroid": "node scripts/sync-live2d-assets.mjs",
     "android": "react-native run-android",
     "ios": "react-native run-ios",
@@ -41,6 +43,8 @@
     "eslint": "^8.19.0",
     "jest": "^29.6.3",
     "jest-environment-jsdom": "^29.6.3",
+    "pixi-live2d-display": "0.4.0",
+    "pixi.js": "6.5.10",
     "prettier": "2.8.8",
     "react-test-renderer": "18.3.1",
     "typescript": "5.0.4"

@@ -59,6 +59,7 @@ export function createDirectStreamFn(opts: CreateDirectStreamFnOptions): StreamF
     // 补全这些字段，否则 pi-ai 内部 undefined.includes 崩溃。
     const m = model as Partial<Model<string>> & { id: string };
     const effectiveModel = {
+      ...model,
       provider: m.provider ?? "openai",
       reasoning: m.reasoning ?? false,
       input: m.input ?? ["text"],
@@ -66,7 +67,6 @@ export function createDirectStreamFn(opts: CreateDirectStreamFnOptions): StreamF
       contextWindow: m.contextWindow ?? 1_000_000,
       maxTokens: m.maxTokens ?? 8_192,
       name: m.name ?? m.id,
-      ...model,
       api: normalizedApi,
       baseUrl: model.baseUrl && model.baseUrl.length > 0 ? model.baseUrl : baseUrl ?? "",
     } as Model<typeof model.api>;

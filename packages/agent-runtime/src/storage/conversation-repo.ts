@@ -849,7 +849,7 @@ export function messageRowToAgentMessages(row: MessageRow): readonly AgentMessag
   blocks.push({ type: "text", text: parsed.text ?? "" });
 
   if (row.role === "user") {
-    return [{ role: "user", content: blocks } as AgentMessage];
+    return [{ role: "user", content: blocks } as unknown as AgentMessage];
   }
 
   const toolCalls = parsed.toolCalls ?? [];
@@ -860,10 +860,12 @@ export function messageRowToAgentMessages(row: MessageRow): readonly AgentMessag
       id: tc.id,
       name: tc.name,
       arguments: tc.args ?? {},
-    });
+    } as unknown as PiContentBlock);
   }
 
-  const result: AgentMessage[] = [{ role: "assistant", content: assistantBlocks } as AgentMessage];
+  const result: AgentMessage[] = [
+    { role: "assistant", content: assistantBlocks } as unknown as AgentMessage,
+  ];
 
   for (const tc of toolCalls) {
     if (tc.result === undefined) continue;

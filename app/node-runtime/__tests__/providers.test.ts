@@ -91,7 +91,7 @@ describe("mobile-permission-provider", () => {
   it("未知/黑名单工具拒绝", async () => {
     const p = createMobilePermissionProvider();
     expect(await p.requestPermission(permReq("bash"))).toBe("deny");
-    expect(await p.requestPermission(permReq("web_fetch"))).toBe("deny");
+    expect(await p.requestPermission(permReq("spawn_agent"))).toBe("deny");
     expect(await p.requestPermission(permReq("unknown_tool"))).toBe("deny");
   });
 });

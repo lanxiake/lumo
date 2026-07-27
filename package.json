@@ -11,7 +11,9 @@
     "android": "pnpm --filter @lumo/app android",
     "ios": "pnpm --filter @lumo/app ios",
     "start": "pnpm --filter @lumo/app start",
-    "setup:sherpa": "pnpm --filter @lumo/app setup:sherpa"
+    "setup:sherpa": "pnpm --filter @lumo/app setup:sherpa",
+    "package:apk": "pnpm --filter @lumo/app package:apk",
+    "package:apk:install": "pnpm --filter @lumo/app package:apk:install"
   },
   "engines": {
     "node": ">=18"
