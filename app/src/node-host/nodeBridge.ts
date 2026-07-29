@@ -13,6 +13,7 @@
 
 import nodejs from "nodejs-mobile-react-native";
 import type {
+  ImageProviderConfig,
   MobileNodeCommand,
   MobileNodeEvent,
   ProviderConfig,
@@ -41,6 +42,11 @@ export interface NodeAuth {
    * 下次 init/发送生效。null 表示清除配置；undefined 表示本次不更新。
    */
   readonly providerConfig?: ProviderConfig | null;
+  /**
+   * 生图提供商配置（含 apiKey）。同 providerConfig 语义：null 清除、undefined 不更新。
+   * 缺省时生图工具回退 gateway 兜底。
+   */
+  readonly imageProviderConfig?: ImageProviderConfig | null;
 }
 
 /** 事件监听器 */
@@ -125,7 +131,8 @@ export function startNodeBridge(): NodeBridge {
           auth.deviceId ||
           auth.gatewayUrl ||
           auth.ttsVoice ||
-          auth.providerConfig !== undefined);
+          auth.providerConfig !== undefined ||
+          auth.imageProviderConfig !== undefined);
       const payload = hasAuth
         ? {
             ...command,
@@ -135,6 +142,7 @@ export function startNodeBridge(): NodeBridge {
               gatewayUrl: auth!.gatewayUrl,
               ttsVoice: auth!.ttsVoice,
               providerConfig: auth!.providerConfig,
+              imageProviderConfig: auth!.imageProviderConfig,
             },
           }
         : command;

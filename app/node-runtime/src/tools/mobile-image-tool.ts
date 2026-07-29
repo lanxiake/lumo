@@ -48,6 +48,89 @@ function buildGatewayImageGenerateUrl(gatewayUrl: string): string {
   return `${root}/v1/image/generate`;
 }
 
+/** OpenAI 兼容图像端点：POST {baseUrl}/images/generations（baseUrl 已含 /v1）。 */
+function buildOpenAiImageUrl(baseUrl: string): string {
+  const root = baseUrl.trim().replace(/\/+$/, "");
+  return `${root}/images/generations`;
+}
+
+/**
+ * 直连 OpenAI 兼容图像端点生图（独立运行模式，凭据本地持有不出进程）。
+ * 请求 b64_json 回传，转 data URI 供 RN 直接展示。
+ */
+async function generateImageViaDirect(options: {
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  prompt: string;
+  width?: number;
+  height?: number;
+  fetchImpl?: typeof fetch;
+}): Promise<GatewayImageGenerateResponse & { effectiveModelId: string }> {
+  const url = buildOpenAiImageUrl(options.baseUrl);
+  const size = `${options.width ?? DEFAULT_SIZE}x${options.height ?? DEFAULT_SIZE}`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), GATEWAY_IMAGE_FETCH_TIMEOUT_MS);
+  const doFetch = options.fetchImpl ?? fetch;
+
+  let resp: Response;
+  try {
+    resp = await doFetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${options.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: options.model,
+        prompt: options.prompt,
+        n: 1,
+        size,
+        response_format: "b64_json",
+      }),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    const isAbort = (err as Error).name === "AbortError";
+    throw Object.assign(
+      new Error(isAbort ? "画画被中断了，我们再试一次吧" : "网络有点挤，画作没传过来"),
+      { code: isAbort ? "ABORTED" : "PROVIDER_NETWORK_ERROR" },
+    );
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  const bodyText = await resp.text();
+  let parsed: unknown = {};
+  try {
+    parsed = bodyText ? JSON.parse(bodyText) : {};
+  } catch {
+    parsed = {};
+  }
+
+  if (!resp.ok) {
+    const errBody = parsed as GatewayImageErrorBody;
+    const message =
+      errBody.error?.message ?? errBody.message ?? bodyText.slice(0, 300) ?? `画画服务出了点问题 (${resp.status})`;
+    throw Object.assign(new Error(message), { code: errBody.code ?? "PROVIDER_ERROR" });
+  }
+
+  const data = parsed as { data?: ReadonlyArray<{ b64_json?: string; revised_prompt?: string }> };
+  const b64 = data.data?.[0]?.b64_json;
+  if (!b64?.trim()) {
+    throw Object.assign(new Error("画作数据是空的，再试一次吧"), { code: "PROVIDER_ERROR" });
+  }
+
+  return {
+    imageBase64: b64,
+    mimeType: "image/png",
+    width: options.width ?? DEFAULT_SIZE,
+    height: options.height ?? DEFAULT_SIZE,
+    revisedPrompt: data.data?.[0]?.revised_prompt ?? options.prompt,
+    effectiveModelId: options.model,
+  };
+}
+
 function wrapChildSafePrompt(userPrompt: string): string {
   return `${CHILD_SAFE_IMAGE_PREFIX}Requested subject: ${userPrompt}`;
 }
@@ -189,19 +272,31 @@ export const mobileImageGenerateToolConfig: MtBotToolConfig<typeof MobileImageGe
     }
 
     const prompt = wrapChildSafePrompt(params.prompt);
-    const modelId = params.modelId ?? DEFAULT_IMAGE_MODEL;
+    const imageConfig = mobileContext.imageProviderConfig;
+    // 有生图 provider 配置：直连（独立运行模式）；否则回退 gateway（需登录）。
+    const modelId = params.modelId ?? imageConfig?.model ?? DEFAULT_IMAGE_MODEL;
 
     try {
-      const data = await generateImageViaGateway({
-        gatewayUrl: mobileContext.gatewayUrl,
-        getAuthToken: mobileContext.getAuthToken,
-        getDeviceId: mobileContext.getDeviceId,
-        prompt,
-        modelId,
-        width: params.width,
-        height: params.height,
-        fetchImpl: mobileContext.fetchImpl,
-      });
+      const data = imageConfig
+        ? await generateImageViaDirect({
+            baseUrl: imageConfig.baseUrl,
+            apiKey: imageConfig.apiKey,
+            model: modelId,
+            prompt,
+            width: params.width,
+            height: params.height,
+            fetchImpl: mobileContext.fetchImpl,
+          })
+        : await generateImageViaGateway({
+            gatewayUrl: mobileContext.gatewayUrl,
+            getAuthToken: mobileContext.getAuthToken,
+            getDeviceId: mobileContext.getDeviceId,
+            prompt,
+            modelId,
+            width: params.width,
+            height: params.height,
+            fetchImpl: mobileContext.fetchImpl,
+          });
 
       const dataUrl = `data:${data.mimeType};base64,${data.imageBase64}`;
       const event: MobileNodeEvent = {

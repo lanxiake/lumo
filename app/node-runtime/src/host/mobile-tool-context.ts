@@ -19,7 +19,7 @@ import type {
   AskUserQuestionContextResult,
 } from "@lumo/agent-runtime";
 import type { SkillInfo } from "@lumo/agent-runtime";
-import type { CreationMeta, MobileNodeEvent } from "../bridge/schema.js";
+import type { CreationMeta, ImageProviderConfig, MobileNodeEvent } from "../bridge/schema.js";
 
 /** 当前正在编辑的游戏目标（edit_creation 期间由 bridge 设置） */
 export interface EditTarget {
@@ -34,6 +34,8 @@ export interface MobileToolExecutionContext extends ToolExecutionContext {
   gatewayUrl: string;
   getAuthToken: () => Promise<string>;
   getDeviceId: () => string | undefined;
+  /** 生图提供商配置（存在则生图直连 OpenAI 兼容图像端点；缺省回退 gateway） */
+  imageProviderConfig?: ImageProviderConfig;
   /** HTTP fetch 原始实现（测试注入用） */
   fetchImpl?: typeof fetch;
   /** 已有创作元信息（含内置游戏），供 list_my_creations 复用感知 */
@@ -55,6 +57,8 @@ export interface MobileToolContextDeps {
   readonly gatewayUrl: string;
   /** 从安全存储读取 JWT（SecureStore/Keychain） */
   readonly getAuthToken: () => Promise<string>;
+  /** 生图提供商配置（存在则生图直连；缺省回退 gateway） */
+  readonly imageProviderConfig?: ImageProviderConfig;
   /** 工具审计写入（规范 §4.4；不记录敏感原文/JWT/API Key） */
   readonly logToolAudit?: (row: {
     toolName: string;
@@ -119,10 +123,11 @@ export function createMobileToolContext(deps: MobileToolContextDeps): MobileTool
     requestConfirm: (kind, title) =>
       deps.requestConfirm ? deps.requestConfirm(kind, title) : Promise.resolve(true),
 
-    // ── Gateway 生图依赖（image_generate 工具用） ──
+    // ── 生图依赖（image_generate 工具用）：有 imageProviderConfig 走 direct，否则 gateway ──
     gatewayUrl: deps.gatewayUrl,
     getAuthToken: deps.getAuthToken,
     getDeviceId: () => deps.deviceId !== "unknown" ? deps.deviceId : undefined,
+    ...(deps.imageProviderConfig ? { imageProviderConfig: deps.imageProviderConfig } : {}),
     fetchImpl: deps.fetchImpl,
 
     ...(deps.getSkills ? { getSkills: deps.getSkills } : {}),

@@ -7,7 +7,7 @@
 
 import React, { useEffect, useState } from "react";
 import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
-import type { ChildProfile, ProviderConfig } from "../../../node-runtime/src/bridge/schema";
+import type { ChildProfile, ImageProviderConfig, ProviderConfig } from "../../../node-runtime/src/bridge/schema";
 import { kidsTheme as t } from "../../theme/kidsTheme";
 import {
   BackIcon,
@@ -56,10 +56,14 @@ export interface SettingsScreenProps {
   readonly providerConfig?: ProviderConfig | null;
   /** 保存模型提供商配置（null 清除） */
   readonly onSaveProviderConfig?: (next: ProviderConfig | null) => void;
+  /** 当前生图提供商配置（null 表示未配置） */
+  readonly imageProviderConfig?: ImageProviderConfig | null;
+  /** 保存生图提供商配置（null 清除） */
+  readonly onSaveImageProviderConfig?: (next: ImageProviderConfig | null) => void;
 }
 
 export function SettingsScreen(props: SettingsScreenProps): React.JSX.Element {
-  const { onClose, defaultPetId, selectedVoice, onVoiceChange, onNavigate, childProfile, onSaveProfile, providerConfig, onSaveProviderConfig } = props;
+  const { onClose, defaultPetId, selectedVoice, onVoiceChange, onNavigate, childProfile, onSaveProfile, providerConfig, onSaveProviderConfig, imageProviderConfig, onSaveImageProviderConfig } = props;
 
   const defaultPetLabel =
     defaultPetId === "mao_pro"
@@ -132,6 +136,13 @@ export function SettingsScreen(props: SettingsScreenProps): React.JSX.Element {
           <>
             <Text style={styles.sectionTitle}>模型提供商</Text>
             <ProviderSection config={providerConfig ?? null} onSave={onSaveProviderConfig} />
+          </>
+        )}
+
+        {onSaveImageProviderConfig && (
+          <>
+            <Text style={styles.sectionTitle}>生图模型</Text>
+            <ImageProviderSection config={imageProviderConfig ?? null} onSave={onSaveImageProviderConfig} />
           </>
         )}
 
@@ -340,6 +351,144 @@ function ProviderSection(props: {
         <Text style={styles.fetchModelsText}>
           {loadingModels ? "获取中…" : "获取模型列表"}
         </Text>
+      </TouchableOpacity>
+      {fetchError !== "" && <Text style={styles.memClearHint}>{fetchError}</Text>}
+      {models.length > 0 && (
+        <View style={styles.modelChipGrid}>
+          {models.map((m) => {
+            const active = model === m;
+            return (
+              <TouchableOpacity
+                key={m}
+                style={[styles.modelChip, active && styles.modelChipActive]}
+                onPress={() => setModel(m)}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.modelChipText, active && styles.voiceChipTextActive]}>{m}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      )}
+
+      <View style={styles.memActions}>
+        <TouchableOpacity style={styles.memClearBtn} onPress={handleClear} activeOpacity={0.7}>
+          <Text style={styles.memClearText}>清除</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.memSaveBtn, !canSave && styles.memSaveBtnDisabled]}
+          onPress={handleSave}
+          activeOpacity={0.7}
+          disabled={!canSave}
+        >
+          <Text style={styles.memSaveText}>{saved ? "已保存 ✓" : "保存"}</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+/**
+ * 生图提供商配置区：baseUrl / apiKey / model。仅 OpenAI 兼容图像端点
+ * （POST {baseUrl}/images/generations）。缺省时生图回退 gateway 兜底。
+ * apiKey 仅存本机，直连上游。
+ */
+function ImageProviderSection(props: {
+  readonly config: ImageProviderConfig | null;
+  readonly onSave: (next: ImageProviderConfig | null) => void;
+}): React.JSX.Element {
+  const { config, onSave } = props;
+  const [baseUrl, setBaseUrl] = useState(config?.baseUrl ?? "");
+  const [apiKey, setApiKey] = useState(config?.apiKey ?? "");
+  const [model, setModel] = useState(config?.model ?? "");
+  const [saved, setSaved] = useState(false);
+  const [models, setModels] = useState<readonly string[]>([]);
+  const [loadingModels, setLoadingModels] = useState(false);
+  const [fetchError, setFetchError] = useState("");
+
+  const configKey = `${config?.baseUrl ?? ""}|${config?.apiKey ?? ""}|${config?.model ?? ""}`;
+  useEffect(() => {
+    setBaseUrl(config?.baseUrl ?? "");
+    setApiKey(config?.apiKey ?? "");
+    setModel(config?.model ?? "");
+    setModels([]);
+    setFetchError("");
+  }, [configKey]); // eslint-disable-line react-hooks/exhaustive-deps -- 仅在外部配置真正变化时回灌
+
+  const canFetch = baseUrl.trim() !== "" && !loadingModels;
+
+  const handleFetchModels = async (): Promise<void> => {
+    if (!canFetch) return;
+    setLoadingModels(true);
+    setFetchError("");
+    try {
+      const list = await fetchModelList("openai", baseUrl, apiKey.trim());
+      setModels(list);
+      if (list.length === 0) setFetchError("未返回任何模型，请手动填写");
+    } catch (e) {
+      setFetchError(`获取失败：${e instanceof Error ? e.message : String(e)}，可手动填写`);
+    } finally {
+      setLoadingModels(false);
+    }
+  };
+
+  const canSave = baseUrl.trim() !== "" && apiKey.trim() !== "" && model.trim() !== "";
+
+  const handleSave = (): void => {
+    if (!canSave) return;
+    onSave({ baseUrl: baseUrl.trim(), apiKey: apiKey.trim(), model: model.trim() });
+    setSaved(true);
+    setTimeout(() => setSaved(false), 1500);
+  };
+
+  const handleClear = (): void => {
+    setBaseUrl("");
+    setApiKey("");
+    setModel("");
+    onSave(null);
+    setSaved(false);
+  };
+
+  return (
+    <View style={styles.memBox}>
+      <MemoryField
+        label="接口地址"
+        value={baseUrl}
+        onChangeText={setBaseUrl}
+        placeholder="https://api.openai.com/v1"
+      />
+      <View style={styles.memRow}>
+        <Text style={styles.memLabel}>API Key</Text>
+        <TextInput
+          style={styles.memInput}
+          value={apiKey}
+          onChangeText={setApiKey}
+          placeholder="sk-..."
+          placeholderTextColor={t.colors.placeholder}
+          secureTextEntry
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+      </View>
+      <View style={styles.memRow}>
+        <Text style={styles.memLabel}>模型</Text>
+        <TextInput
+          style={styles.memInput}
+          value={model}
+          onChangeText={setModel}
+          placeholder="dall-e-3 / gpt-image-1"
+          placeholderTextColor={t.colors.placeholder}
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+      </View>
+      <TouchableOpacity
+        style={[styles.fetchModelsBtn, !canFetch && styles.fetchModelsBtnDisabled]}
+        onPress={handleFetchModels}
+        activeOpacity={0.7}
+        disabled={!canFetch}
+      >
+        <Text style={styles.fetchModelsText}>{loadingModels ? "获取中…" : "获取模型列表"}</Text>
       </TouchableOpacity>
       {fetchError !== "" && <Text style={styles.memClearHint}>{fetchError}</Text>}
       {models.length > 0 && (

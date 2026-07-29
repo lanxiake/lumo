@@ -55,6 +55,20 @@ export interface ProviderConfig {
   readonly model: string;
 }
 
+/**
+ * 生图提供商配置（用户在设置页填写，直连 OpenAI 兼容图像端点
+ * POST {baseUrl}/images/generations）。仅 OpenAI 协议——Anthropic 无生图。
+ * 缺省（未配置）时生图工具回退 gateway 兜底路径。
+ */
+export interface ImageProviderConfig {
+  /** API 基础 URL（如 https://api.openai.com/v1，已含 /v1） */
+  readonly baseUrl: string;
+  /** API Key */
+  readonly apiKey: string;
+  /** 生图模型 ID（如 dall-e-3 / gpt-image-1） */
+  readonly model: string;
+}
+
 /** 会话初始化载荷 */
 export interface InitPayload {
   /** 宠物 ID（决定人格 / 模型槽） */

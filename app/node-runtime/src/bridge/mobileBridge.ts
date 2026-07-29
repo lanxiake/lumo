@@ -10,7 +10,7 @@
 
 import { AgentRegistry, PermissionMemory, type StreamFnFactory } from "@lumo/agent-runtime";
 import { stripVirtualHumanTags } from "@lumo/core";
-import type { CreationMeta, MobileNodeCommand, MobileNodeEvent, ProviderConfig } from "./schema.js";
+import type { CreationMeta, ImageProviderConfig, MobileNodeCommand, MobileNodeEvent, ProviderConfig } from "./schema.js";
 import type { EditTarget } from "../host/mobile-tool-context.js";
 import { createPetSession, type PetSession } from "../agent/pet-agent-runner.js";
 import { createMobileEventSink } from "../host/mobile-event-sink.js";
@@ -46,6 +46,8 @@ export interface MobileBridgeDeps {
   readonly log?: (msg: string) => void;
   /** 用户配置的模型提供商动态取值（RN 经 _auth 更新后即时生效）；缺省回退 gateway */
   readonly getProviderConfig?: () => ProviderConfig | undefined;
+  /** 生图提供商动态取值（RN 经 _auth 更新后即时生效）；缺省生图回退 gateway */
+  readonly getImageProviderConfig?: () => ImageProviderConfig | undefined;
   /** streamFn 工厂覆盖（测试注入 fake；缺省用真实 direct/gateway 工厂） */
   readonly streamFnFactoryOverride?: StreamFnFactory;
   /** TTS 合成器覆盖（测试注入 fake；缺省用本地 Edge TTS） */
@@ -313,6 +315,7 @@ export function createMobileBridge(deps: MobileBridgeDeps) {
     const newSessionId = `sess-${Date.now()}`;
     const gatewayUrl = resolveGatewayUrl();
     const providerConfig = deps.getProviderConfig?.();
+    const imageProviderConfig = deps.getImageProviderConfig?.();
     deps.log?.(
       `[handleInit] provider=${providerConfig ? `${providerConfig.protocol}:${providerConfig.model}` : "(none, gateway fallback)"}`,
     );
@@ -325,6 +328,7 @@ export function createMobileBridge(deps: MobileBridgeDeps) {
         appVersion: deps.appVersion,
         gatewayUrl,
         getAuthToken: deps.getAuthToken,
+        ...(imageProviderConfig ? { imageProviderConfig } : {}),
         emit: emitEvent,
         listCreations: () => knownCreations,
         getEditTarget: () => editTarget,

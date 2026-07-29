@@ -56,7 +56,7 @@ import {
 import type { MessageRow } from "./node-runtime/src/memory/local-session-memory";
 import { SharedPrefsStorage } from "./src/auth/secureStorage";
 import { resolveDeviceId, type DeviceIdStore } from "./src/auth/deviceIdentity";
-import type { ChildProfile, CreationMeta, MobileNodeEvent, ProviderConfig } from "./node-runtime/src/bridge/schema";
+import type { ChildProfile, CreationMeta, ImageProviderConfig, MobileNodeEvent, ProviderConfig } from "./node-runtime/src/bridge/schema";
 import { getPetModelConfig } from "./node-runtime/src/config/model-registry";
 import { stripVirtualHumanTags, type PetState } from "@lumo/core";
 import {
@@ -64,6 +64,11 @@ import {
   saveProviderConfig,
   clearProviderConfig,
 } from "./src/storage/providerConfigPersistence";
+import {
+  loadImageProviderConfig,
+  saveImageProviderConfig,
+  clearImageProviderConfig,
+} from "./src/storage/imageProviderConfigPersistence";
 
 import { useSpeechRecognition } from "./src/voice/useSpeechRecognition";
 import { useVoiceSession } from "./src/voice/useVoiceSession";
@@ -280,13 +285,26 @@ function MainApp(props: MainAppProps): React.JSX.Element {
       .catch(() => {});
   }, []);
 
-  // getAuth 注入当前音色 + 模型提供商：Node 侧收到 _auth 即切换。独立运行无登录 token，
-  // 仅带 deviceId（本地会话记忆键）+ ttsVoice + providerConfig（null=清除，走 gateway 兜底）。
+  // 生图提供商配置：同 providerConfig 语义，独立恢复 + 随 _auth 下发。
+  const [imageProviderConfig, setImageProviderConfig] = useState<ImageProviderConfig | null>(null);
+  const imageProviderConfigRef = useRef<ImageProviderConfig | null>(null);
+  useEffect(() => {
+    loadImageProviderConfig(devSecureStorage)
+      .then((cfg) => {
+        imageProviderConfigRef.current = cfg;
+        setImageProviderConfig(cfg);
+      })
+      .catch(() => {});
+  }, []);
+
+  // getAuth 注入当前音色 + 模型/生图提供商：Node 侧收到 _auth 即切换。独立运行无登录 token，
+  // 仅带 deviceId（本地会话记忆键）+ ttsVoice + providerConfig + imageProviderConfig（null=清除）。
   const getAuthWithVoice = useCallback(
     (): NodeAuth => ({
       deviceId,
       ttsVoice: ttsVoiceRef.current,
       providerConfig: providerConfigRef.current,
+      imageProviderConfig: imageProviderConfigRef.current,
     }),
     [deviceId],
   );
@@ -383,6 +401,23 @@ function MainApp(props: MainAppProps): React.JSX.Element {
         void clearProviderConfig(devSecureStorage);
       }
       // re-init：让 Node 侧 config-provider 按新 providerConfig 切换 direct/gateway 模型源。
+      if (nodeReady) {
+        initSession(buildInitPayload());
+      }
+    },
+    [nodeReady, initSession, buildInitPayload],
+  );
+
+  // 保存/清除生图提供商：更新 ref → 持久化 → re-init 让 Node 侧 tool context 重建拿到新配置。
+  const handleSaveImageProviderConfig = useCallback(
+    (next: ImageProviderConfig | null) => {
+      imageProviderConfigRef.current = next;
+      setImageProviderConfig(next);
+      if (next) {
+        void saveImageProviderConfig(devSecureStorage, next);
+      } else {
+        void clearImageProviderConfig(devSecureStorage);
+      }
       if (nodeReady) {
         initSession(buildInitPayload());
       }
@@ -1120,6 +1155,8 @@ function MainApp(props: MainAppProps): React.JSX.Element {
             onSaveProfile={handleSaveProfile}
             providerConfig={providerConfig}
             onSaveProviderConfig={handleSaveProviderConfig}
+            imageProviderConfig={imageProviderConfig}
+            onSaveImageProviderConfig={handleSaveImageProviderConfig}
             onClose={appActions.closeOverlay}
             onGoBack={appActions.goBack}
             onNavigate={appActions.navigate}
@@ -1193,6 +1230,8 @@ function AppOverlay(props: {
   onSaveProfile: (next: ChildProfile) => void;
   providerConfig: ProviderConfig | null;
   onSaveProviderConfig: (next: ProviderConfig | null) => void;
+  imageProviderConfig: ImageProviderConfig | null;
+  onSaveImageProviderConfig: (next: ImageProviderConfig | null) => void;
   /** 关闭整个 overlay（回舞台；设置页顶栏 / 滑动关闭） */
   onClose: () => void;
   /** 出栈一层（子页返回上一页，如设置） */
@@ -1256,6 +1295,8 @@ function AppOverlay(props: {
           onSaveProfile={props.onSaveProfile}
           providerConfig={props.providerConfig}
           onSaveProviderConfig={props.onSaveProviderConfig}
+          imageProviderConfig={props.imageProviderConfig}
+          onSaveImageProviderConfig={props.onSaveImageProviderConfig}
           onClose={props.onClose}
           onNavigate={(target) => {
             props.onNavigate(target);

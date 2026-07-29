@@ -11,7 +11,7 @@
 
 import { createMobileBridge } from "./bridge/mobileBridge.js";
 import { getPetModelConfig } from "./config/model-registry.js";
-import type { MobileNodeCommand, MobileNodeEvent, ProviderConfig } from "./bridge/schema.js";
+import type { ImageProviderConfig, MobileNodeCommand, MobileNodeEvent, ProviderConfig } from "./bridge/schema.js";
 import { createRemoteLogShipper, type ClientLogEntry } from "./host/remote-log-shipper.js";
 
 /**
@@ -86,6 +86,8 @@ export function startMobileHost(): void {
   let cachedGatewayUrl = cfg.gatewayUrl;
   // 用户配置的模型提供商（含 apiKey）——经 _auth 下发，内存缓存，不落日志。
   let cachedProviderConfig: ProviderConfig | undefined;
+  // 生图提供商配置（含 apiKey）——同上，缺省时生图回退 gateway。
+  let cachedImageProviderConfig: ImageProviderConfig | undefined;
 
   const logShipper = createRemoteLogShipper({
     getGatewayUrl: () => cachedGatewayUrl,
@@ -104,6 +106,7 @@ export function startMobileHost(): void {
     getAuthToken: async () => cachedToken,
     getDeviceId: () => cachedDeviceId,
     getProviderConfig: () => cachedProviderConfig,
+    getImageProviderConfig: () => cachedImageProviderConfig,
     platform: cfg.platform,
     appVersion: cfg.appVersion,
     // MVP 占位人格解析：真实实现从内置宠物配置 / 云端同步读取。
@@ -122,6 +125,7 @@ export function startMobileHost(): void {
           gatewayUrl?: string;
           ttsVoice?: string;
           providerConfig?: ProviderConfig | null;
+          imageProviderConfig?: ImageProviderConfig | null;
         };
       };
       // 允许 RN 在任意消息上携带 _auth 更新安全凭据（不进日志）
@@ -146,6 +150,19 @@ export function startMobileHost(): void {
             typeof pc.model === "string"
           ) {
             cachedProviderConfig = pc;
+          }
+        }
+        // imageProviderConfig：同上语义（OpenAI 兼容图像端点，无 protocol 字段）。
+        if (parsed._auth.imageProviderConfig === null) {
+          cachedImageProviderConfig = undefined;
+        } else if (parsed._auth.imageProviderConfig && typeof parsed._auth.imageProviderConfig === "object") {
+          const ic = parsed._auth.imageProviderConfig;
+          if (
+            typeof ic.baseUrl === "string" &&
+            typeof ic.apiKey === "string" &&
+            typeof ic.model === "string"
+          ) {
+            cachedImageProviderConfig = ic;
           }
         }
       }
