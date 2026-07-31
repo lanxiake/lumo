@@ -12,8 +12,8 @@ export const BARGE_IN_MIN_CHARS = 2;
 /** TTS 播放期打断所需最少汉字数（更严） */
 export const BARGE_IN_MIN_CHARS_WHILE_SPEAKING = 3;
 
-/** 二次确认：首次合格 partial 到真正打断的最小间隔 */
-export const BARGE_IN_CONFIRM_MS = 250;
+/** 二次确认：首次合格 partial 到真正打断的最小间隔（250→150ms 降体感延迟） */
+export const BARGE_IN_CONFIRM_MS = 150;
 
 /** 归一化：去空白与常见标点 */
 function normalizeForBargeIn(text: string): string {

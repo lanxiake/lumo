@@ -46,7 +46,7 @@ export interface SettingsScreenProps {
   /** 选择新音色时回调 */
   readonly onVoiceChange?: (voice: string) => void;
   readonly onNavigate?: (
-    target: "gallery" | "chat_history" | "game_history" | "pet_selection",
+    target: "gallery" | "chat_history" | "game_history" | "pet_selection" | "system_logs",
   ) => void;
   /** 小主人记忆档案（AI 对话中收集，家长可查看/修改） */
   readonly childProfile?: ChildProfile;
@@ -152,6 +152,14 @@ export function SettingsScreen(props: SettingsScreenProps): React.JSX.Element {
             <MemorySection profile={childProfile ?? {}} onSave={onSaveProfile} />
           </>
         )}
+
+        <Text style={styles.sectionTitle}>诊断</Text>
+        <Card
+          icon={<ChevronIcon size={22} color={t.colors.ink} />}
+          label="系统日志"
+          hint="查看运行/错误日志，可导出"
+          onPress={() => onNavigate?.("system_logs")}
+        />
 
         <View style={styles.parentHintBox}>
           <LockIcon size={14} color={t.colors.ink} />

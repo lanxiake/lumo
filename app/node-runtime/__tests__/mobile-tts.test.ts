@@ -7,6 +7,7 @@ import {
   encodeTtsResult,
   DEFAULT_KIDS_VOICE,
   KIDS_TTS_FORMAT,
+  buildEmotionSsml,
   type EdgeTtsEngine,
 } from "../src/host/mobile-tts.js";
 
@@ -142,5 +143,43 @@ describe("createMobileTts.synthesize", () => {
     await tts.setVoice("zh-CN-YunxiNeural");
     await tts.synthesize("重复");
     expect(toStream).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("buildEmotionSsml", () => {
+  it("含 express-as style 与音色，文本被 XML 转义", () => {
+    const ssml = buildEmotionSsml("zh-CN-XiaoxiaoNeural", "a<b&c", "cheerful", 1.0);
+    expect(ssml).toContain('name="zh-CN-XiaoxiaoNeural"');
+    expect(ssml).toContain('style="cheerful"');
+    expect(ssml).toContain("a&lt;b&amp;c");
+    expect(ssml).toContain('rate="+0%"');
+  });
+  it("语速倍率转相对百分比", () => {
+    expect(buildEmotionSsml("v", "x", "gentle", 1.2)).toContain('rate="+20%"');
+    expect(buildEmotionSsml("v", "x", "gentle", 0.9)).toContain('rate="-10%"');
+  });
+});
+
+describe("createMobileTts 情绪风格", () => {
+  it("显式传 style + 引擎支持 rawToStream → 走 express-as SSML", async () => {
+    const rawToStream = vi.fn(() => ({ audioStream: Readable.from([Buffer.from([7])]) }));
+    const toStream = vi.fn(() => ({ audioStream: Readable.from([Buffer.from([8])]) }));
+    const engine: EdgeTtsEngine = { async setMetadata() {}, toStream, rawToStream };
+    const tts = createMobileTts({ style: "cheerful", engineFactory: async () => engine });
+    await tts.synthesize("你好呀");
+    expect(rawToStream).toHaveBeenCalledTimes(1);
+    expect(toStream).not.toHaveBeenCalled();
+    const ssmlArg = (rawToStream.mock.calls as unknown as string[][])[0]?.[0];
+    expect(ssmlArg).toContain("mstts:express-as");
+  });
+
+  it("默认关闭情绪（style 缺省）→ 走普通 toStream", async () => {
+    const rawToStream = vi.fn(() => ({ audioStream: Readable.from([Buffer.from([7])]) }));
+    const toStream = vi.fn(() => ({ audioStream: Readable.from([Buffer.from([8])]) }));
+    const engine: EdgeTtsEngine = { async setMetadata() {}, toStream, rawToStream };
+    const tts = createMobileTts({ engineFactory: async () => engine });
+    await tts.synthesize("你好呀");
+    expect(toStream).toHaveBeenCalledTimes(1);
+    expect(rawToStream).not.toHaveBeenCalled();
   });
 });

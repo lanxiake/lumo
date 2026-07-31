@@ -13,6 +13,7 @@ import { createMobileBridge } from "./bridge/mobileBridge.js";
 import { getPetModelConfig } from "./config/model-registry.js";
 import type { ImageProviderConfig, MobileNodeCommand, MobileNodeEvent, ProviderConfig } from "./bridge/schema.js";
 import { createRemoteLogShipper, type ClientLogEntry } from "./host/remote-log-shipper.js";
+import { createSystemLogBuffer } from "./perf/system-logs.js";
 
 /**
  * 事件 → 远程日志映射（仅错误 + 关键事件；返回 null 表示不上报）。
@@ -96,6 +97,14 @@ export function startMobileHost(): void {
     platform: cfg.platform,
   });
 
+  // 系统日志内存缓冲（运行/错误/turn_timing 日志）：设置页「系统日志」统一查看。
+  // nodeLog = tee：既写 stderr（原行为）又入缓冲，供 RN get_system_logs 回读。
+  const systemLog = createSystemLogBuffer();
+  const nodeLog = (msg: string): void => {
+    process.stderr.write(`[kids-mobile] ${msg}\n`);
+    systemLog.push(msg);
+  };
+
   const bridge = createMobileBridge({
     emit: (event: MobileNodeEvent) => {
       rn.channel.send(JSON.stringify(event));
@@ -112,7 +121,8 @@ export function startMobileHost(): void {
     // MVP 占位人格解析：真实实现从内置宠物配置 / 云端同步读取。
     resolvePetPersona: (petId) => `我是你的宠物伙伴（${petId}），最喜欢和你一起玩、一起学新东西啦！`,
     resolvePetPersonaAddon: (petId) => getPetModelConfig(petId).personaAddon,
-    log: (msg) => process.stderr.write(`[kids-mobile] ${msg}\n`),
+    log: nodeLog,
+    systemLog,
   });
 
   rn.channel.on("message", (raw: string) => {

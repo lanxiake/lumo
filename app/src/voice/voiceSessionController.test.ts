@@ -406,7 +406,7 @@ describe("voiceSessionController", () => {
       });
       c.onTtsPlayStart();
       t = 1000 + 2000;
-      c.onMicLevel(0.02); // 低于 BARGE_IN_MIN_MIC_LEVEL(0.04)，视为静默
+      c.onMicLevel(0.02); // 低于 BARGE_IN_MIN_MIC_LEVEL(0.025)，视为静默
       c.onPlaybackLevel(0.4);
       const result = c.onSpeechPartial("我想插话进来说点什么", {
         sessionReady: true,
@@ -453,7 +453,7 @@ describe("voiceSessionController", () => {
       });
       c.onTtsPlayStart();
       t = 1000 + 2000;
-      c.onMicLevel(0.19); // 过地板(0.04)
+      c.onMicLevel(0.19); // 过地板(0.025)
       c.onPlaybackLevel(0.71); // 播放很响也不再影响门控
       const arm = c.onSpeechPartial("我想插一句话进来说说看", {
         sessionReady: true,

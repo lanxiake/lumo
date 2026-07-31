@@ -6,8 +6,10 @@
  */
 
 import React from "react";
-import { StyleSheet, View, type ViewStyle } from "react-native";
+import { Image, StyleSheet, View, type ViewStyle } from "react-native";
 import { kidsTheme as t } from "../theme/kidsTheme";
+
+const phonePng = require("../assets/phone.png");
 
 export interface IconProps {
   readonly size?: number;
@@ -45,50 +47,11 @@ export function KeyboardIcon({ size = 28, color = "#FFFFFF", style }: IconProps)
   );
 }
 
-/** 电话听筒图标（经典听筒轮廓） */
+/** 电话图标（直接用下载的 phone.png，tintColor 上色，白底按钮上默认白色） */
 export function PhoneIcon({ size = 24, color = "#FFFFFF", style }: IconProps): React.JSX.Element {
-  const w = size;
-  const h = size;
   return (
-    <View style={[{ width: w, height: h, alignItems: "center", justifyContent: "center" }, style]}>
-      <View style={{ width: w * 0.72, height: h * 0.72, transform: [{ rotate: "-40deg" }] }}>
-        {/* 听筒上端 */}
-        <View
-          style={{
-            position: "absolute",
-            top: 0,
-            left: w * 0.08,
-            width: w * 0.42,
-            height: h * 0.28,
-            borderRadius: h * 0.1,
-            backgroundColor: color,
-          }}
-        />
-        {/* 中间弧杆 */}
-        <View
-          style={{
-            position: "absolute",
-            top: h * 0.2,
-            left: w * 0.28,
-            width: w * 0.18,
-            height: h * 0.36,
-            borderRadius: w * 0.09,
-            backgroundColor: color,
-          }}
-        />
-        {/* 听筒下端 */}
-        <View
-          style={{
-            position: "absolute",
-            bottom: 0,
-            left: w * 0.08,
-            width: w * 0.42,
-            height: h * 0.28,
-            borderRadius: h * 0.1,
-            backgroundColor: color,
-          }}
-        />
-      </View>
+    <View style={[{ width: size, height: size, alignItems: "center", justifyContent: "center" }, style]}>
+      <Image source={phonePng} style={{ width: size, height: size, tintColor: color }} resizeMode="contain" />
     </View>
   );
 }

@@ -14,6 +14,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Animated,
   SafeAreaView,
   StatusBar,
@@ -56,7 +57,7 @@ import {
 import type { MessageRow } from "./node-runtime/src/memory/local-session-memory";
 import { SharedPrefsStorage } from "./src/auth/secureStorage";
 import { resolveDeviceId, type DeviceIdStore } from "./src/auth/deviceIdentity";
-import type { ChildProfile, CreationMeta, ImageProviderConfig, MobileNodeEvent, ProviderConfig } from "./node-runtime/src/bridge/schema";
+import type { ChildProfile, CreationMeta, ImageProviderConfig, MobileNodeEvent, ProviderConfig, SystemLogLineWire } from "./node-runtime/src/bridge/schema";
 import { getPetModelConfig } from "./node-runtime/src/config/model-registry";
 import { stripVirtualHumanTags, type PetState } from "@lumo/core";
 import {
@@ -93,6 +94,7 @@ import { ChatHistoryScreen } from "./src/app/screens/ChatHistoryScreen";
 import { PetSelectionScreen } from "./src/app/screens/PetSelectionScreen";
 import { SettingsScreen, DEFAULT_TTS_VOICE } from "./src/app/screens/SettingsScreen";
 import { GameHistoryScreen } from "./src/app/screens/GameHistoryScreen";
+import { SystemLogsScreen } from "./src/app/screens/SystemLogsScreen";
 import { PlaygroundView } from "./src/components/PlaygroundView";
 import type { ConversationMode } from "./src/conversation/useConversationMode";
 import type { NodeAuth } from "./src/node-host/nodeBridge";
@@ -311,8 +313,13 @@ function MainApp(props: MainAppProps): React.JSX.Element {
 
   // Agent 推荐活动的确认卡片（confirm_request → 大图标卡）
   const [confirmCard, setConfirmCard] = useState<{ requestId: string; kind: "game" | "drawing"; title: string } | null>(null);
+  // 当前正在执行的工具标签（做小游戏/画画/查资料…），用于宠物旁常驻忙碌提示；null=空闲
+  const [activeToolLabel, setActiveToolLabel] = useState<string | null>(null);
   // "改一改"输入弹窗：记录待编辑的游戏
   const [editTarget, setEditTarget] = useState<{ gameId: string; title: string; html: string } | null>(null);
+  // 系统日志（Node 侧 SystemLogBuffer，经 system_logs_result 事件回传）
+  const [sysLogs, setSysLogs] = useState<readonly SystemLogLineWire[]>([]);
+  const [sysLogTotal, setSysLogTotal] = useState(0);
 
   // 监听键盘高度：仅移动 HUD，不动模型舞台
   useEffect(() => {
@@ -339,7 +346,7 @@ function MainApp(props: MainAppProps): React.JSX.Element {
         setDuplexEnabled(false);
       });
   }, []);
-  const { nodeReady, sessionReady, lastEvent, sendMessage, speakText, speakGameText, abort, initSession, closePlayground, updateCreations, sendConfirm, editCreation, updateChildProfile } = useNodeHost({
+  const { nodeReady, sessionReady, lastEvent, sendMessage, speakText, speakGameText, abort, initSession, closePlayground, updateCreations, sendConfirm, editCreation, updateChildProfile, requestSystemLogs, clientLog } = useNodeHost({
     getAuth: getAuthWithVoice,
     // 自动 init 带上已恢复的小主人档案（ref 同步真值源）
     getInitPayload: () => ({
@@ -724,6 +731,7 @@ function MainApp(props: MainAppProps): React.JSX.Element {
       }
     },
     duplexEnabled,
+    clientLog,
   });
 
   // 点击提示防抖+冷却：只节流「发给 AI 的隐式提示」，本地表情/涟漪反馈仍即时触发。
@@ -819,6 +827,8 @@ function MainApp(props: MainAppProps): React.JSX.Element {
       const cleanText = tagParser.feed(lastEvent.payload.text);
       finalizeAssistantStream(cleanText);
       recordAssistantFinal(cleanText);
+      // 回合结束兜底清忙碌提示（防 tool_finished 丢失导致 pill 卡住）
+      setActiveToolLabel(null);
       // Phase 4 lite：供播放期回声文本过滤
       setLastTtsText(cleanText);
     }
@@ -848,15 +858,18 @@ function MainApp(props: MainAppProps): React.JSX.Element {
     // 统一插入（openGallery/openPlayground 触发），此处不再重复 append，避免竞态与重复。
     // 工具调用过程 → 显示具体工具名 + 开始/结束状态（按 toolCallId 合并）
     if (lastEvent.type === "tool_started") {
+      const label = toolLabelFor(lastEvent.payload.toolName);
+      setActiveToolLabel(label);
       upsertToolActivity({
         kind: "tool_activity",
         toolName: lastEvent.payload.toolName,
-        toolLabel: toolLabelFor(lastEvent.payload.toolName),
+        toolLabel: label,
         status: "start",
         toolCallId: lastEvent.payload.toolCallId,
       });
     }
     if (lastEvent.type === "tool_finished") {
+      setActiveToolLabel(null);
       upsertToolActivity({
         kind: "tool_activity",
         toolName: lastEvent.payload.toolName,
@@ -887,6 +900,11 @@ function MainApp(props: MainAppProps): React.JSX.Element {
     if (lastEvent.type === "tts_failed") {
       const detail = lastEvent.payload.message ? `（${lastEvent.payload.message}）` : "";
       appActions.showToast(`声音没出来，再说一次试试~${detail}`, "hint");
+    }
+    // 系统日志回传（设置页「系统日志」请求的响应）
+    if (lastEvent.type === "system_logs_result") {
+      setSysLogs(lastEvent.payload.logs);
+      setSysLogTotal(lastEvent.payload.logTotalCount);
     }
     // 本轮不会再产出音频的结束事件：phone_call 下兜底重开麦克风，防止连续对话卡死。
     // （tts_failed/agent_error/safety_blocked 都不会走 onTtsPlayEnd，否则麦永不重开）
@@ -957,6 +975,16 @@ function MainApp(props: MainAppProps): React.JSX.Element {
     return petState;
   }, []);
 
+  // 忙碌提示：工具运行中优先显示具体动作（做小游戏…/画画…），否则按状态机给一句人话。
+  // 常驻宠物上方，即使聊天坞收起也可见，避免"半天没反应以为坏了"。
+  const busyLabel = activeToolLabel
+    ? `${activeToolLabel}…`
+    : state === "thinking"
+      ? "思考中…"
+      : state === "tts_converting"
+        ? "准备说话…"
+        : null;
+
   return (
     <>
       {duplexEnabled ? (
@@ -995,8 +1023,9 @@ function MainApp(props: MainAppProps): React.JSX.Element {
         />
       </View>
 
-      {/* 右上角浮动控制：缩放 + 模型切换 + 设置 */}
-      <View style={styles.floatZoom}>
+      {/* 右上角浮动控制：缩放 + 模型切换 + 设置（游戏页打开时隐藏，否则 Android 高 elevation 会截走游戏页触摸） */}
+      {!playgroundOpen && (
+      <View style={[styles.floatZoom, isLandscape && styles.floatZoomLandscape]}>
         <FloatBtn onPress={() => setPetScale((s) => Math.max(MIN_SCALE, +(s - 0.1).toFixed(2)))}>
           <MinusIcon size={14} color={t.colors.ink} />
         </FloatBtn>
@@ -1031,12 +1060,24 @@ function MainApp(props: MainAppProps): React.JSX.Element {
           <SettingsIcon size={16} color={t.colors.ink} />
         </TouchableOpacity>
       </View>
+      )}
 
-      {/* 底部悬浮控制面板（overlay/设置页打开时隐藏：既无意义又会遮挡设置页底部滚动区） */}
-      {!overlayOpen && (
+      {/* 忙碌状态胶囊：始终可见（即使聊天坞收起），让孩子知道宠物在思考/做游戏/画画 */}
+      {petVisible && busyLabel && (
+        <View style={[styles.busyPill, isLandscape && styles.busyPillLandscape]} pointerEvents="none">
+          <ActivityIndicator size="small" color="#FFFFFF" />
+          <Text style={[styles.busyPillText, { fontSize: fs(13) }]} numberOfLines={1}>
+            {busyLabel}
+          </Text>
+        </View>
+      )}
+
+      {/* 底部悬浮控制面板（overlay/设置页/游戏页打开时隐藏：既无意义又会遮挡触摸） */}
+      {!overlayOpen && !playgroundOpen && (
       <View
         style={[
           styles.hud,
+          isLandscape && styles.hudLandscape,
           {
             paddingHorizontal: hudPaddingH,
             bottom: 6 + keyboardHeight,
@@ -1048,11 +1089,15 @@ function MainApp(props: MainAppProps): React.JSX.Element {
           <Text style={styles.hudToggleText}>{hudCollapsed ? "▲" : "▼"}</Text>
         </TouchableOpacity>
 
-        {/* 可折叠内容区 */}
+        {/* 可折叠内容区（横屏限高到半屏，避免面板过高） */}
         <Animated.View
           style={{
             opacity: hudAnim,
-            maxHeight: hudAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 500] }),
+            maxHeight: hudAnim.interpolate({
+              inputRange: [0, 1],
+              /* 横屏放宽外层上限到 0.9 屏，只让聊天记录自身限高，状态条+输入框始终可见 */
+              outputRange: [0, isLandscape ? Math.round(height * 0.9) : 500],
+            }),
             overflow: "hidden",
           }}
           pointerEvents={hudCollapsed ? "none" : "auto"}
@@ -1067,6 +1112,7 @@ function MainApp(props: MainAppProps): React.JSX.Element {
             images={appState.galleryImages}
             games={appState.gameHistory}
             onReplayGame={(game) => appActions.openPlayground(game.html, game.title, { existingId: game.id })}
+            maxHeight={isLandscape ? Math.round(height * 0.42) : undefined}
           />
 
           {/* 极简状态条 */}
@@ -1101,7 +1147,6 @@ function MainApp(props: MainAppProps): React.JSX.Element {
             enabled={controlsEnabled}
             sessionReady={sessionReady}
             sttAvailable={sttAvailable}
-            listening={listening}
             placeholder={sessionReady ? "和宠物说点什么…" : "会话建立中…"}
             fontSize={fs}
           />
@@ -1177,6 +1222,9 @@ function MainApp(props: MainAppProps): React.JSX.Element {
             }}
             petNames={petNames}
             onRenamePet={handleSavePetName}
+            sysLogs={sysLogs}
+            sysLogTotal={sysLogTotal}
+            requestSystemLogs={requestSystemLogs}
           />
           </SafeAreaView>
         </SwipeToDismiss>
@@ -1244,6 +1292,9 @@ function AppOverlay(props: {
   onSetDefaultPet: (petId: string) => void;
   petNames: Record<string, string>;
   onRenamePet: (petId: string, name: string) => void;
+  sysLogs: readonly SystemLogLineWire[];
+  sysLogTotal: number;
+  requestSystemLogs: () => void;
 }): React.JSX.Element | null {
   switch (props.screen) {
     case "gallery":
@@ -1303,6 +1354,15 @@ function AppOverlay(props: {
           }}
         />
       );
+    case "system_logs":
+      return (
+        <SystemLogsScreen
+          onClose={props.onGoBack}
+          requestLogs={props.requestSystemLogs}
+          logs={props.sysLogs}
+          logTotalCount={props.sysLogTotal}
+        />
+      );
     case "pet_stage":
     default:
       return null;
@@ -1333,6 +1393,40 @@ const styles = StyleSheet.create({
     right: 10,
     alignItems: "center",
     gap: 8,
+    /* 抬到 hud(6) 之上，避免展开的聊天面板遮挡右侧按钮的点击 */
+    elevation: 8,
+    zIndex: 8,
+  },
+  /* 横屏屏高仅 ~369dp，压缩起点与间距，保证场景/设置按钮不出屏 */
+  floatZoomLandscape: {
+    top: 8,
+    gap: 3,
+  },
+  /* 忙碌胶囊：顶部居中悬浮，高 elevation 保证浮在场景/人物之上；pointerEvents none 不拦触摸 */
+  busyPill: {
+    position: "absolute",
+    top: 12,
+    alignSelf: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: "rgba(58, 175, 169, 0.94)",
+    shadowColor: t.colors.ink,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 10,
+    zIndex: 10,
+  },
+  busyPillLandscape: {
+    top: 6,
+  },
+  busyPillText: {
+    color: "#FFFFFF",
+    fontWeight: "700",
   },
   floatBtn: {
     width: 44,
@@ -1425,6 +1519,10 @@ const styles = StyleSheet.create({
     shadowRadius: 20,
     elevation: 6,
   },
+  hudLandscape: {
+    maxWidth: 560,
+    marginHorizontal: "auto",
+  },
   hudToggle: {
     alignSelf: "center",
     paddingHorizontal: 24,
@@ -1477,6 +1575,8 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     zIndex: 60,
+    // Android 触摸命中按 elevation 排序（压过 zIndex），必须高于 hud/floatZoom 才不被截走
+    elevation: 60,
   },
   authLoading: {
     ...StyleSheet.absoluteFillObject,

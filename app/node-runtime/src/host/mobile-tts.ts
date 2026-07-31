@@ -36,6 +36,25 @@ export interface TtsResult {
 export interface EdgeTtsEngine {
   setMetadata(voice: string, format: string): Promise<void>;
   toStream(text: string, options?: { rate?: number }): { audioStream: NodeJS.ReadableStream };
+  /** 原始 SSML 合成（可选）：支持 mstts:express-as 情绪风格，引擎不支持时回退 toStream */
+  rawToStream?(requestSSML: string): { audioStream: NodeJS.ReadableStream };
+}
+
+/** XML 特殊字符转义（防 SSML 注入与解析错误） */
+function escapeXml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+/** 构造带情绪风格的 SSML（express-as style + prosody rate） */
+export function buildEmotionSsml(voice: string, text: string, style: string, speed: number): string {
+  const ratePct = `${Math.round((speed - 1) * 100)}%`;
+  const rate = speed >= 1 ? `+${ratePct}` : ratePct;
+  return `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xmlns:mstts="https://www.w3.org/2001/mstts" xml:lang="zh-CN"><voice name="${voice}"><mstts:express-as style="${style}"><prosody rate="${rate}">${escapeXml(text)}</prosody></mstts:express-as></voice></speak>`;
 }
 
 /** 单次 TTS 合成超时（ms；Edge TTS 首包通常 1~3s，真机弱网放宽到 15s） */
@@ -58,6 +77,8 @@ export interface MobileTtsDeps {
   readonly voice?: string;
   /** 语速倍率 */
   readonly speed?: number;
+  /** 情绪风格（express-as style，如 cheerful；空串关闭走普通 toStream） */
+  readonly style?: string;
   /** 合成超时（毫秒） */
   readonly timeoutMs?: number;
   /** 脱敏日志 */
@@ -130,6 +151,9 @@ const TTS_CACHE_MAX = 64;
 export function createMobileTts(deps: MobileTtsDeps = {}) {
   let voice = deps.voice ?? DEFAULT_KIDS_VOICE;
   const speed = deps.speed ?? 1.0;
+  // 情绪风格默认关闭（空串）：免费 Edge Read Aloud 端点不支持 mstts:express-as，
+  // 实测任何音色带 express-as 均返回空音频。需显式传 style 且切到 Azure 付费端点才生效。
+  const style = deps.style ?? "";
   const factory = deps.engineFactory ?? defaultEngineFactory;
   let engine: EdgeTtsEngine | null = null;
 
@@ -168,7 +192,7 @@ export function createMobileTts(deps: MobileTtsDeps = {}) {
       const clean = sanitizeTtsText(cleanTtsText(text));
       if (!clean) return null;
 
-      const cacheKey = `${voice}|${speed}|${clean}`;
+      const cacheKey = `${voice}|${speed}|${style}|${clean}`;
       const cached = cacheGet(cacheKey);
       if (cached) {
         deps.log?.(`[tts] 缓存命中 文本=${clean.length}字 字节=${cached.byteLength}`);
@@ -176,7 +200,11 @@ export function createMobileTts(deps: MobileTtsDeps = {}) {
       }
 
       const e = await ensureEngine();
-      const { audioStream } = e.toStream(clean, { rate: speed });
+      // 有情绪风格且引擎支持 rawToStream → 走 express-as SSML；否则普通 toStream。
+      const { audioStream } =
+        style && e.rawToStream
+          ? e.rawToStream(buildEmotionSsml(voice, clean, style, speed))
+          : e.toStream(clean, { rate: speed });
 
       const chunks: Buffer[] = [];
       const collectPromise = new Promise<void>((resolve, reject) => {

@@ -57,6 +57,10 @@ export interface UseNodeHostResult {
   readonly updateChildProfile: (profile: InitPayload["childProfile"]) => void;
   /** 通知 Node 侧小游戏已关闭 */
   readonly closePlayground: (reason: "user" | "timeout", score?: number) => void;
+  /** 请求系统运行/错误日志（设置页「系统日志」用；响应经 lastEvent=system_logs_result） */
+  readonly requestSystemLogs: (maxItems?: number) => void;
+  /** RN 诊断日志上报到 node SystemLogBuffer（barge-in 决策等，应用内可查看） */
+  readonly clientLog: (message: string) => void;
   /** 同步已有创作元信息，供 Agent 复用感知 */
   readonly updateCreations: (creations: readonly CreationMeta[]) => void;
   /** 回应 Agent 的确认请求（confirm_request） */
@@ -170,6 +174,14 @@ export function useNodeHost(options: UseNodeHostOptions = {}): UseNodeHostResult
     setSessionReady(false);
   }, []);
 
+  const requestSystemLogs = useCallback((maxItems?: number) => {
+    bridgeRef.current?.send({ type: "get_system_logs", payload: { maxItems } });
+  }, []);
+
+  const clientLog = useCallback((message: string) => {
+    bridgeRef.current?.send({ type: "client_log", payload: { message } });
+  }, []);
+
   const abort = useCallback(() => {
     const sessionId = sessionIdRef.current;
     if (!sessionId) {
@@ -231,5 +243,5 @@ export function useNodeHost(options: UseNodeHostOptions = {}): UseNodeHostResult
     [],
   );
 
-  return { nodeReady, sessionReady, lastEvent, ping, initSession, sendMessage, speakText, speakGameText, abort, reset, updateChildProfile, closePlayground, updateCreations, sendConfirm, editCreation };
+  return { nodeReady, sessionReady, lastEvent, ping, initSession, sendMessage, speakText, speakGameText, abort, reset, updateChildProfile, closePlayground, updateCreations, sendConfirm, editCreation, requestSystemLogs, clientLog };
 }

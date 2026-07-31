@@ -35,10 +35,12 @@ export interface ChatHistoryProps {
   readonly games?: readonly GameEntry[];
   /** 点击游戏缩略图重玩 */
   readonly onReplayGame?: (game: GameEntry) => void;
+  /** 覆盖默认高度上限（横屏用更小值，避免挤占输入框） */
+  readonly maxHeight?: number;
 }
 
 export function ChatHistory(props: ChatHistoryProps): React.JSX.Element | null {
-  const { messages, fontScale, hasMore, onLoadOlder, onNavigate, images, games, onReplayGame } = props;
+  const { messages, fontScale, hasMore, onLoadOlder, onNavigate, images, games, onReplayGame, maxHeight } = props;
   const scrollRef = useRef<ScrollView>(null);
   const visible = messages.filter(
     (m) => m.role === "user" || m.role === EVENT_MESSAGE_ROLE || m.content.trim().length > 0,
@@ -59,7 +61,7 @@ export function ChatHistory(props: ChatHistoryProps): React.JSX.Element | null {
   if (visible.length === 0) return null;
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, maxHeight != null && { maxHeight }]}>
       <ScrollView
         ref={scrollRef}
         style={styles.scroll}

@@ -29,7 +29,8 @@ export type ChildSafeScreen =
   | "chat_history"
   | "pet_selection"
   | "settings"
-  | "game_history";
+  | "game_history"
+  | "system_logs";
 
 /** 音效名 */
 export type SoundName =
@@ -131,6 +132,7 @@ const CHILD_SAFE_SCREENS: readonly ChildSafeScreen[] = [
   "pet_selection",
   "settings",
   "game_history",
+  "system_logs",
 ];
 
 export function useAppActions(options: UseAppActionsOptions = {}): UseAppActionsResult {

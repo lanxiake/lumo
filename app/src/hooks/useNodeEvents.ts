@@ -19,6 +19,7 @@ const CHILD_SAFE_SCREENS: readonly ChildSafeScreen[] = [
   "pet_selection",
   "settings",
   "game_history",
+  "system_logs",
 ];
 
 const SOUND_NAMES: readonly SoundName[] = [

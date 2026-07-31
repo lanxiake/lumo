@@ -21,6 +21,7 @@ import { createMobileStreamFnFactory } from "../host/mobile-stream-fn-factory.js
 import { createMobileToolContext } from "../host/mobile-tool-context.js";
 import { childSafeErrorMessage } from "../safety/child-safe-response.js";
 import { createMobileTts, type MobileTts } from "../host/mobile-tts.js";
+import type { SystemLogBuffer } from "../perf/system-logs.js";
 
 /** bridge 的宿主环境依赖（安全存储 / 网关 / 平台信息，由 index.ts 注入） */
 export interface MobileBridgeDeps {
@@ -54,6 +55,8 @@ export interface MobileBridgeDeps {
   readonly ttsOverride?: MobileTts;
   /** 是否启用 TTS（缺省启用；mock/联调可关） */
   readonly ttsEnabled?: boolean;
+  /** 系统日志缓冲（deps.log 已 tee 入此）；提供时响应 get_system_logs */
+  readonly systemLog?: SystemLogBuffer;
 }
 
 /**
@@ -535,6 +538,22 @@ export function createMobileBridge(deps: MobileBridgeDeps) {
             `[mobileBridge] 已热更新档案 keys=${Object.keys(cmd.payload.childProfile).join(",") || "(empty)"}`,
           );
           break;
+        case "get_system_logs": {
+          const maxItems = cmd.payload.maxItems ?? 200;
+          deps.emit({
+            type: "system_logs_result",
+            payload: {
+              logs: deps.systemLog?.getRecent().slice(-maxItems) ?? [],
+              logTotalCount: deps.systemLog?.totalCount() ?? 0,
+            },
+          });
+          break;
+        }
+        case "client_log": {
+          // RN 诊断日志写入统一 SystemLogBuffer（经 deps.log tee），应用内可查看/导出
+          deps.log?.(cmd.payload.message);
+          break;
+        }
         default: {
           const _exhaustive: never = cmd;
           void _exhaustive;
@@ -557,7 +576,13 @@ export function createMobileBridge(deps: MobileBridgeDeps) {
 
   /** 是否旁路命令串行队列（控制面命令，可在长任务阻塞时即时生效） */
   function shouldBypassCommandQueue(cmd: MobileNodeCommand): boolean {
-    return cmd.type === "confirm_response" || cmd.type === "abort" || cmd.type === "ping";
+    return (
+      cmd.type === "confirm_response" ||
+      cmd.type === "abort" ||
+      cmd.type === "ping" ||
+      cmd.type === "get_system_logs" ||
+      cmd.type === "client_log"
+    );
   }
 
   /** 入队处理命令；返回该命令完成的 Promise（便于测试 await） */

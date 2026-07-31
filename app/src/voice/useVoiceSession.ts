@@ -56,6 +56,8 @@ export interface UseVoiceSessionOptions {
    * 默认 false（半双工，TTS 播放期关麦）。
    */
   readonly duplexEnabled?: boolean;
+  /** barge-in 决策诊断日志上报（写入应用内系统日志） */
+  readonly clientLog?: (message: string) => void;
 }
 
 export interface UseVoiceSessionResult {
@@ -110,7 +112,12 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
     recordUserMessage,
     onModeChange,
     duplexEnabled = false,
+    clientLog,
   } = options;
+
+  // clientLog 用 ref 持有：控制器仅创建一次，但日志器身份可能变化
+  const clientLogRef = useRef(clientLog);
+  clientLogRef.current = clientLog;
 
   const controllerRef = useRef<VoiceSessionController | null>(null);
   if (!controllerRef.current) {
@@ -118,6 +125,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       mode: "normal",
       petVisible,
       duplexEnabled,
+      log: (m) => clientLogRef.current?.(m),
     });
   }
   const controller = controllerRef.current;

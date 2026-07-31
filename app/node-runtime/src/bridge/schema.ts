@@ -10,6 +10,14 @@
  * 便于 RN 侧（TS）与 Node 侧共享同一份 schema。
  */
 
+/** 系统运行/错误日志行传输格式 */
+export interface SystemLogLineWire {
+  readonly id: string;
+  readonly at: number;
+  readonly level: "info" | "warn" | "error";
+  readonly message: string;
+}
+
 /** 已有创作的元信息（供 Agent 复用感知，不含 url/html 大字段） */
 export interface CreationMeta {
   readonly kind: "image" | "game";
@@ -147,6 +155,16 @@ export type MobileNodeCommand =
         readonly reason: "user" | "timeout";
         readonly score?: number;
       };
+    }
+  | {
+      // 请求系统运行/错误日志（设置页「系统日志」查看/导出用）
+      readonly type: "get_system_logs";
+      readonly payload: { readonly maxItems?: number };
+    }
+  | {
+      // RN 侧诊断日志上报（barge-in 决策等），写入 node SystemLogBuffer 以便应用内查看
+      readonly type: "client_log";
+      readonly payload: { readonly message: string };
     };
 
 /**
@@ -248,6 +266,14 @@ export type MobileNodeEvent =
   | {
       readonly type: "playground_close";
       readonly payload: { readonly reason: "user" | "timeout" | "complete"; readonly score?: number };
+    }
+  | {
+      // 系统日志回传（get_system_logs 的响应）：运行/错误日志行 + 累计总数
+      readonly type: "system_logs_result";
+      readonly payload: {
+        readonly logs: readonly SystemLogLineWire[];
+        readonly logTotalCount: number;
+      };
     };
 
 /** 儿童 UI 错误分类（规范 §9.1） */
