@@ -998,7 +998,11 @@ function MainApp(props: MainAppProps): React.JSX.Element {
       <SceneBackground sceneId={currentScene.id} />
 
       {/* 主舞台（HUD 绝对浮动在上方，舞台占满安全区） */}
-      <View style={styles.stage} {...panResponder.panHandlers}>
+      <View
+        style={styles.stage}
+        pointerEvents={playgroundOpen || overlayOpen ? "none" : "auto"}
+        {...panResponder.panHandlers}
+      >
         <Live2DView
           key={currentModelId}
           onRendererReady={onRendererReady}

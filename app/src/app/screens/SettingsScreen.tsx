@@ -210,8 +210,20 @@ function Card(props: {
 }
 
 /**
- * 拉取 provider 模型列表：OpenAI 兼容走 GET {baseUrl}/models（baseUrl 已含 /v1），
- * Anthropic 走 GET {baseUrl}/v1/models（x-api-key 头）。返回 data[].id 排序去重。
+ * 纯 host（无路径段）时补 /v1；已有路径段不动。
+ * 字符串实现（不用 new URL）——RN/Hermes 的 URL polyfill pathname 不可靠。
+ */
+function ensureV1(root: string): string {
+  const withoutProto = root.replace(/^[a-z]+:\/\//i, "");
+  const slash = withoutProto.indexOf("/");
+  const hasPath = slash >= 0 && withoutProto.slice(slash + 1).trim().length > 0;
+  return hasPath ? root : `${root}/v1`;
+}
+
+/**
+ * 拉取 provider 模型列表：OpenAI 兼容走 GET {baseUrl}/v1/models，Anthropic 走
+ * GET {baseUrl}/v1/models。两者 baseUrl 都归一化补 /v1（幂等）。Anthropic 同时带
+ * x-api-key 与 Authorization: Bearer 两种鉴权头，兼容真 Anthropic 与第三方兼容网关。
  * 客户端直连上游，凭据不出本机。
  */
 async function fetchModelList(
@@ -220,17 +232,28 @@ async function fetchModelList(
   apiKey: string,
 ): Promise<string[]> {
   const root = baseUrl.trim().replace(/\/+$/, "");
-  const url = protocol === "anthropic" ? `${root}/v1/models` : `${root}/models`;
+  const url = `${ensureV1(root)}/models`;
   const headers: Record<string, string> =
     protocol === "anthropic"
-      ? { "x-api-key": apiKey, "anthropic-version": "2023-06-01" }
+      ? {
+          "x-api-key": apiKey,
+          Authorization: `Bearer ${apiKey}`,
+          "anthropic-version": "2023-06-01",
+        }
       : { Authorization: `Bearer ${apiKey}` };
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 15_000);
   try {
     const res = await fetch(url, { headers, signal: ctrl.signal });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const json = (await res.json()) as { data?: ReadonlyArray<{ id?: string }> };
+    const body = await res.text();
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${body.slice(0, 120)}`);
+    let json: { data?: ReadonlyArray<{ id?: string }> };
+    try {
+      json = JSON.parse(body);
+    } catch {
+      // 非 JSON：多半 baseUrl 指到了网页/错误路径，给出端点提示而非笼统解析异常
+      throw new Error(`响应非 JSON（检查 baseUrl）：${body.slice(0, 80)}`);
+    }
     const ids = (json.data ?? []).map((m) => m.id).filter((x): x is string => !!x);
     return Array.from(new Set(ids)).sort();
   } finally {

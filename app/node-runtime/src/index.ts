@@ -14,6 +14,7 @@ import { getPetModelConfig } from "./config/model-registry.js";
 import type { ImageProviderConfig, MobileNodeCommand, MobileNodeEvent, ProviderConfig } from "./bridge/schema.js";
 import { createRemoteLogShipper, type ClientLogEntry } from "./host/remote-log-shipper.js";
 import { createSystemLogBuffer } from "./perf/system-logs.js";
+import { ensureOpenAiV1 } from "./host/provider-url.js";
 
 /**
  * 事件 → 远程日志映射（仅错误 + 关键事件；返回 null 表示不上报）。
@@ -159,7 +160,9 @@ export function startMobileHost(): void {
             typeof pc.apiKey === "string" &&
             typeof pc.model === "string"
           ) {
-            cachedProviderConfig = pc;
+            // openai 兼容端点漏填 /v1 时补全（anthropic SDK 自拼 /v1/messages，不动）
+            cachedProviderConfig =
+              pc.protocol === "openai" ? { ...pc, baseUrl: ensureOpenAiV1(pc.baseUrl) } : pc;
           }
         }
         // imageProviderConfig：同上语义（OpenAI 兼容图像端点，无 protocol 字段）。
@@ -172,7 +175,8 @@ export function startMobileHost(): void {
             typeof ic.apiKey === "string" &&
             typeof ic.model === "string"
           ) {
-            cachedImageProviderConfig = ic;
+            // 图像端点恒为 OpenAI 兼容（拼 /images/generations），同样补 /v1
+            cachedImageProviderConfig = { ...ic, baseUrl: ensureOpenAiV1(ic.baseUrl) };
           }
         }
       }
