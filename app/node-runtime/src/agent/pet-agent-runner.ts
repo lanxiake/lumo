@@ -26,6 +26,7 @@ import {
   type AssembleAgentRuntime,
 } from "@lumo/agent-runtime";
 import type { StreamFn } from "@mariozechner/pi-agent-core";
+import type { Context } from "@mariozechner/pi-ai";
 import { loadPetAgentDefinition } from "./pet-agent-loader.js";
 import { createMobileSummaryGenerator } from "./mobile-summary-generator.js";
 import { buildMobileToolRegistry } from "../tools/mobile-tool-registry.js";
@@ -66,6 +67,12 @@ export interface PetSession {
   updateChildProfile(profile: ChildProfile): void;
   /** 当前系统提示词（热更新断言 / 诊断用） */
   getSystemPrompt(): string;
+  /**
+   * 一次性后台文本生成：复用捕获的 innerStream + model 直调 LLM，产出纯文本。
+   * 不进主 Agent 循环、不出对话记录，供 create_web_playground 异步生成 HTML 用
+   * （主对话不再被大段 HTML 阻塞）。signal 可中断。
+   */
+  generateText(prompt: string, signal?: AbortSignal): Promise<string>;
 }
 
 /** prompt 结果：安全放行 or 被拦截 */
@@ -183,6 +190,23 @@ export async function createPetSession(deps: PetSessionDeps): Promise<PetSession
     },
     getSystemPrompt(): string {
       return instance.getSystemPrompt();
+    },
+    async generateText(prompt: string, signal?: AbortSignal): Promise<string> {
+      if (!capturedInnerStream) {
+        throw new Error("[createPetSession] innerStream 尚未就绪，无法后台生成");
+      }
+      const context: Context = {
+        messages: [{ role: "user", content: prompt, timestamp: Date.now() }],
+      };
+      const streamResult = await capturedInnerStream(res.resolved.model, context, {
+        purpose: "session_summary",
+      } as Parameters<StreamFn>[2]);
+      let text = "";
+      for await (const event of streamResult) {
+        if (signal?.aborted) break;
+        if (event.type === "text_delta") text += event.delta;
+      }
+      return text.trim();
     },
   };
 }

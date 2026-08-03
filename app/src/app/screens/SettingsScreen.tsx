@@ -7,7 +7,7 @@
 
 import React, { useEffect, useState } from "react";
 import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
-import type { ChildProfile, ImageProviderConfig, ProviderConfig } from "../../../node-runtime/src/bridge/schema";
+import type { ChildProfile, ImageProviderConfig, ImageProviderKind, ProviderConfig } from "../../../node-runtime/src/bridge/schema";
 import { kidsTheme as t } from "../../theme/kidsTheme";
 import {
   BackIcon,
@@ -62,8 +62,29 @@ export interface SettingsScreenProps {
   readonly onSaveImageProviderConfig?: (next: ImageProviderConfig | null) => void;
 }
 
+/** 连续双击判定窗口（ms）：两次点击间隔在此内才展开高级设置 */
+const DOUBLE_TAP_MS = 600;
+
 export function SettingsScreen(props: SettingsScreenProps): React.JSX.Element {
   const { onClose, defaultPetId, selectedVoice, onVoiceChange, onNavigate, childProfile, onSaveProfile, providerConfig, onSaveProviderConfig, imageProviderConfig, onSaveImageProviderConfig } = props;
+
+  // 高级设置（系统日志 / 模型提供商 / 生图模型）默认折叠，连续双击标题才展开，
+  // 避免小朋友误触改坏模型配置或翻看日志。
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const lastTapRef = React.useRef(0);
+  const handleAdvancedTap = (): void => {
+    if (advancedOpen) {
+      setAdvancedOpen(false);
+      return;
+    }
+    const now = Date.now();
+    if (now - lastTapRef.current < DOUBLE_TAP_MS) {
+      setAdvancedOpen(true);
+      lastTapRef.current = 0;
+    } else {
+      lastTapRef.current = now;
+    }
+  };
 
   const defaultPetLabel =
     defaultPetId === "mao_pro"
@@ -132,20 +153,6 @@ export function SettingsScreen(props: SettingsScreenProps): React.JSX.Element {
           })}
         </View>
 
-        {onSaveProviderConfig && (
-          <>
-            <Text style={styles.sectionTitle}>模型提供商</Text>
-            <ProviderSection config={providerConfig ?? null} onSave={onSaveProviderConfig} />
-          </>
-        )}
-
-        {onSaveImageProviderConfig && (
-          <>
-            <Text style={styles.sectionTitle}>生图模型</Text>
-            <ImageProviderSection config={imageProviderConfig ?? null} onSave={onSaveImageProviderConfig} />
-          </>
-        )}
-
         {onSaveProfile && (
           <>
             <Text style={styles.sectionTitle}>小主人记忆</Text>
@@ -153,13 +160,45 @@ export function SettingsScreen(props: SettingsScreenProps): React.JSX.Element {
           </>
         )}
 
-        <Text style={styles.sectionTitle}>诊断</Text>
-        <Card
-          icon={<ChevronIcon size={22} color={t.colors.ink} />}
-          label="系统日志"
-          hint="查看运行/错误日志，可导出"
-          onPress={() => onNavigate?.("system_logs")}
-        />
+        {/* 高级设置：家长专区。连续双击标题才展开，防止小朋友误改模型配置/翻日志。 */}
+        <TouchableOpacity
+          style={styles.advancedHeader}
+          onPress={handleAdvancedTap}
+          activeOpacity={0.7}
+        >
+          <LockIcon size={14} color={t.colors.cloudGray} />
+          <Text style={styles.advancedHeaderText}>
+            高级设置{advancedOpen ? "" : "（家长专区·连续双击打开）"}
+          </Text>
+          <View style={{ flex: 1 }} />
+          <ChevronIcon size={14} color={t.colors.cinnabar} />
+        </TouchableOpacity>
+
+        {advancedOpen && (
+          <>
+            {onSaveProviderConfig && (
+              <>
+                <Text style={styles.sectionTitle}>模型提供商</Text>
+                <ProviderSection config={providerConfig ?? null} onSave={onSaveProviderConfig} />
+              </>
+            )}
+
+            {onSaveImageProviderConfig && (
+              <>
+                <Text style={styles.sectionTitle}>生图模型</Text>
+                <ImageProviderSection config={imageProviderConfig ?? null} onSave={onSaveImageProviderConfig} />
+              </>
+            )}
+
+            <Text style={styles.sectionTitle}>诊断</Text>
+            <Card
+              icon={<ChevronIcon size={22} color={t.colors.ink} />}
+              label="系统日志"
+              hint="查看运行/错误/性能日志，可导出"
+              onPress={() => onNavigate?.("system_logs")}
+            />
+          </>
+        )}
 
         <View style={styles.parentHintBox}>
           <LockIcon size={14} color={t.colors.ink} />
@@ -429,6 +468,7 @@ function ImageProviderSection(props: {
   readonly onSave: (next: ImageProviderConfig | null) => void;
 }): React.JSX.Element {
   const { config, onSave } = props;
+  const [provider, setProvider] = useState<ImageProviderKind>(config?.provider ?? "openai");
   const [baseUrl, setBaseUrl] = useState(config?.baseUrl ?? "");
   const [apiKey, setApiKey] = useState(config?.apiKey ?? "");
   const [model, setModel] = useState(config?.model ?? "");
@@ -437,8 +477,9 @@ function ImageProviderSection(props: {
   const [loadingModels, setLoadingModels] = useState(false);
   const [fetchError, setFetchError] = useState("");
 
-  const configKey = `${config?.baseUrl ?? ""}|${config?.apiKey ?? ""}|${config?.model ?? ""}`;
+  const configKey = `${config?.provider ?? ""}|${config?.baseUrl ?? ""}|${config?.apiKey ?? ""}|${config?.model ?? ""}`;
   useEffect(() => {
+    setProvider(config?.provider ?? "openai");
     setBaseUrl(config?.baseUrl ?? "");
     setApiKey(config?.apiKey ?? "");
     setModel(config?.model ?? "");
@@ -446,7 +487,7 @@ function ImageProviderSection(props: {
     setFetchError("");
   }, [configKey]); // eslint-disable-line react-hooks/exhaustive-deps -- 仅在外部配置真正变化时回灌
 
-  const canFetch = baseUrl.trim() !== "" && !loadingModels;
+  const canFetch = provider === "openai" && baseUrl.trim() !== "" && !loadingModels;
 
   const handleFetchModels = async (): Promise<void> => {
     if (!canFetch) return;
@@ -467,12 +508,13 @@ function ImageProviderSection(props: {
 
   const handleSave = (): void => {
     if (!canSave) return;
-    onSave({ baseUrl: baseUrl.trim(), apiKey: apiKey.trim(), model: model.trim() });
+    onSave({ provider, baseUrl: baseUrl.trim(), apiKey: apiKey.trim(), model: model.trim() });
     setSaved(true);
     setTimeout(() => setSaved(false), 1500);
   };
 
   const handleClear = (): void => {
+    setProvider("openai");
     setBaseUrl("");
     setApiKey("");
     setModel("");
@@ -480,13 +522,35 @@ function ImageProviderSection(props: {
     setSaved(false);
   };
 
+  const providerOptions: readonly { key: ImageProviderKind; label: string; hint: string }[] = [
+    { key: "openai", label: "OpenAI", hint: "https://api.openai.com/v1" },
+    { key: "rightcode", label: "Right Code", hint: "https://www.rightapi.ai/draw" },
+    { key: "gemini", label: "Gemini", hint: "https://www.rightapi.ai/draw" },
+  ];
+  const activeHint = providerOptions.find((o) => o.key === provider)?.hint ?? "";
+
   return (
     <View style={styles.memBox}>
+      <View style={styles.modelChipGrid}>
+        {providerOptions.map((o) => {
+          const active = provider === o.key;
+          return (
+            <TouchableOpacity
+              key={o.key}
+              style={[styles.modelChip, active && styles.modelChipActive]}
+              onPress={() => setProvider(o.key)}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.modelChipText, active && styles.voiceChipTextActive]}>{o.label}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
       <MemoryField
         label="接口地址"
         value={baseUrl}
         onChangeText={setBaseUrl}
-        placeholder="https://api.openai.com/v1"
+        placeholder={activeHint}
       />
       <View style={styles.memRow}>
         <Text style={styles.memLabel}>API Key</Text>
@@ -513,14 +577,16 @@ function ImageProviderSection(props: {
           autoCorrect={false}
         />
       </View>
-      <TouchableOpacity
-        style={[styles.fetchModelsBtn, !canFetch && styles.fetchModelsBtnDisabled]}
-        onPress={handleFetchModels}
-        activeOpacity={0.7}
-        disabled={!canFetch}
-      >
-        <Text style={styles.fetchModelsText}>{loadingModels ? "获取中…" : "获取模型列表"}</Text>
-      </TouchableOpacity>
+      {provider === "openai" && (
+        <TouchableOpacity
+          style={[styles.fetchModelsBtn, !canFetch && styles.fetchModelsBtnDisabled]}
+          onPress={handleFetchModels}
+          activeOpacity={0.7}
+          disabled={!canFetch}
+        >
+          <Text style={styles.fetchModelsText}>{loadingModels ? "获取中…" : "获取模型列表"}</Text>
+        </TouchableOpacity>
+      )}
       {fetchError !== "" && <Text style={styles.memClearHint}>{fetchError}</Text>}
       {models.length > 0 && (
         <View style={styles.modelChipGrid}>
@@ -842,6 +908,23 @@ const styles = StyleSheet.create({
     fontSize: 11,
     textAlign: "center",
     marginTop: 32,
+  },
+  advancedHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 24,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 14,
+    backgroundColor: t.colors.paperDeep,
+    borderWidth: 1,
+    borderColor: t.colors.softGoldBorder,
+  },
+  advancedHeaderText: {
+    color: t.colors.cloudGray,
+    fontSize: t.font.label,
+    fontWeight: "700",
   },
   parentHintBox: {
     flexDirection: "row",

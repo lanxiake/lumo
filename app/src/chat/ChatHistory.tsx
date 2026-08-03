@@ -11,8 +11,8 @@
  *  - 工具过程：显示"正在画画…/✅ 画画好啦"，让孩子看到宠物在忙什么。
  */
 
-import React, { useEffect, useRef } from "react";
-import { Image, type NativeScrollEvent, type NativeSyntheticEvent, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { Clipboard, Image, type NativeScrollEvent, type NativeSyntheticEvent, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import type { MessageRow } from "../../node-runtime/src/memory/local-session-memory";
 import { decodeEventMessage, eventCardLabel, EVENT_MESSAGE_ROLE, toolCardView } from "./eventMessage";
 import type { ChildSafeScreen, GalleryImage, GameEntry } from "../hooks/useAppActions";
@@ -42,6 +42,18 @@ export interface ChatHistoryProps {
 export function ChatHistory(props: ChatHistoryProps): React.JSX.Element | null {
   const { messages, fontScale, hasMore, onLoadOlder, onNavigate, images, games, onReplayGame, maxHeight } = props;
   const scrollRef = useRef<ScrollView>(null);
+  // 长按复制消息文本：copiedId 短暂标记被复制的气泡，显示"已复制"反馈。
+  const [copiedId, setCopiedId] = useState<number | null>(null);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const copyText = useCallback((id: number, text: string) => {
+    Clipboard.setString(text);
+    setCopiedId(id);
+    if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+    copyTimerRef.current = setTimeout(() => setCopiedId(null), 1500);
+  }, []);
+  useEffect(() => () => {
+    if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+  }, []);
   const visible = messages.filter(
     (m) => m.role === "user" || m.role === EVENT_MESSAGE_ROLE || m.content.trim().length > 0,
   );
@@ -131,45 +143,58 @@ export function ChatHistory(props: ChatHistoryProps): React.JSX.Element | null {
               );
             }
 
-            // tool_activity：图标 + 工具名 + 状态徽章
+            // tool_activity：图标 + 工具名 + 状态徽章（+ 可选入参/结果明细行）
             const view = toolCardView(event);
             return (
               <View
                 key={msg.id}
                 style={[
-                  styles.toolCard,
+                  styles.toolCardWrap,
                   view.tone === "done" && styles.toolCardDone,
                   view.tone === "error" && styles.toolCardError,
                 ]}
               >
-                <Text style={[styles.toolIcon, { fontSize: fontScale(14) }]}>{view.icon}</Text>
-                <Text style={[styles.toolText, { fontSize: fontScale(12) }]} numberOfLines={1}>
-                  {view.label}
-                </Text>
-                <View
-                  style={[
-                    styles.toolBadge,
-                    view.tone === "done" && styles.toolBadgeDone,
-                    view.tone === "error" && styles.toolBadgeError,
-                  ]}
-                >
-                  <Text style={[styles.toolBadgeText, { fontSize: fontScale(10) }]}>
-                    {view.statusText}
+                <View style={styles.toolCardRow}>
+                  <Text style={[styles.toolIcon, { fontSize: fontScale(14) }]}>{view.icon}</Text>
+                  <Text style={[styles.toolText, { fontSize: fontScale(12) }]} numberOfLines={1}>
+                    {view.label}
                   </Text>
+                  <View
+                    style={[
+                      styles.toolBadge,
+                      view.tone === "done" && styles.toolBadgeDone,
+                      view.tone === "error" && styles.toolBadgeError,
+                    ]}
+                  >
+                    <Text style={[styles.toolBadgeText, { fontSize: fontScale(10) }]}>
+                      {view.statusText}
+                    </Text>
+                  </View>
                 </View>
+                {view.detail ? (
+                  <Text style={[styles.toolDetail, { fontSize: fontScale(10) }]} numberOfLines={3}>
+                    {view.detail}
+                  </Text>
+                ) : null}
               </View>
             );
           }
           const isUser = msg.role === "user";
           return (
-            <View
+            <TouchableOpacity
               key={msg.id}
               style={[styles.bubble, isUser ? styles.userBubble : styles.assistantBubble]}
+              activeOpacity={0.7}
+              onLongPress={() => copyText(msg.id, msg.content)}
+              delayLongPress={300}
             >
               <Text style={[styles.text, { fontSize: fontScale(12) }]}>
                 {msg.content}
               </Text>
-            </View>
+              {copiedId === msg.id && (
+                <Text style={[styles.copiedHint, { fontSize: fontScale(10) }]}>已复制</Text>
+              )}
+            </TouchableOpacity>
           );
         })}
       </ScrollView>
@@ -220,6 +245,12 @@ const styles = StyleSheet.create({
     color: t.colors.text,
     lineHeight: 18,
   },
+  copiedHint: {
+    color: t.colors.primary,
+    fontWeight: "700",
+    marginTop: 2,
+    alignSelf: "flex-end",
+  },
   // 图画/游戏缩略图卡片
   mediaCard: {
     flexDirection: "row",
@@ -264,9 +295,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   // 工具过程卡片：图标 + 工具名 + 状态徽章（进行中/完成/没成功配色）
-  toolCard: {
-    flexDirection: "row",
-    alignItems: "center",
+  toolCardWrap: {
     alignSelf: "flex-start",
     backgroundColor: t.colors.primarySoft,
     borderWidth: 1,
@@ -276,6 +305,15 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     marginVertical: 2,
     maxWidth: "85%",
+  },
+  toolCardRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  toolDetail: {
+    color: t.colors.textMuted,
+    marginTop: 4,
+    lineHeight: 14,
   },
   toolCardDone: {
     backgroundColor: t.colors.tealSoft,

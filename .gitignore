@@ -47,3 +47,7 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+
+docs/宣传/
+docs/plans/
+docs/temp/

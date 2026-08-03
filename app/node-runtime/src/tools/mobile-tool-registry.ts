@@ -27,7 +27,7 @@ import {
 } from "./app-actions-tool.js";
 import { createWebPlaygroundToolConfig } from "./web-playground-tool.js";
 import { mobileImageGenerateToolConfig } from "./mobile-image-tool.js";
-import { listMyCreationsToolConfig, getEditTargetToolConfig } from "./creations-tool.js";
+import { listMyCreationsToolConfig, openCreationToolConfig, getEditTargetToolConfig } from "./creations-tool.js";
 import { updateChildProfileToolConfig } from "./update-child-profile-tool.js";
 import type { MobileToolExecutionContext } from "../host/mobile-tool-context.js";
 
@@ -59,6 +59,7 @@ export function buildMobileToolRegistry(toolContext: ToolExecutionContext): MtBo
     createMtBotTool(appShowToastToolConfig, toolContext) as unknown as MtBotTool,
     createMtBotTool(createWebPlaygroundToolConfig, toolContext) as unknown as MtBotTool,
     createMtBotTool(listMyCreationsToolConfig, toolContext) as unknown as MtBotTool,
+    createMtBotTool(openCreationToolConfig, toolContext) as unknown as MtBotTool,
     createMtBotTool(getEditTargetToolConfig, toolContext) as unknown as MtBotTool,
     createMtBotTool(updateChildProfileToolConfig, toolContext) as unknown as MtBotTool,
   ];

@@ -7,7 +7,7 @@
  *  - get_edit_target：编辑态下取当前游戏的原始 HTML，供 Agent 在其上修改。
  */
 
-import { Type } from "@sinclair/typebox";
+import { Type, type Static } from "@sinclair/typebox";
 import type { MtBotToolConfig, AgentToolResult, ToolExecutionContext } from "@lumo/agent-runtime";
 import type { MobileToolExecutionContext } from "../host/mobile-tool-context.js";
 import { BUILTIN_GAME_META } from "../config/builtin-games.js";
@@ -50,6 +50,55 @@ export const listMyCreationsToolConfig: MtBotToolConfig<typeof NoParams> = {
     return {
       content: [{ type: "text", text: JSON.stringify(result) }],
       details: result,
+    };
+  },
+};
+
+// ── open_creation ────────────────────────────────────────────────────────
+
+const OpenCreationParams = Type.Object({
+  id: Type.String({
+    description: "要打开的游戏 id：内置精品库 id（如 builtin-fireworks）或 list_my_creations 返回的历史作品 id",
+  }),
+});
+
+/** 内置游戏 id 集合（校验用，避免打开不存在的 id） */
+const BUILTIN_GAME_IDS = new Set(BUILTIN_GAME_META.map((g) => g.id));
+
+export const openCreationToolConfig: MtBotToolConfig<typeof OpenCreationParams> = {
+  name: "open_creation",
+  label: "打开游戏",
+  description:
+    "按 id 直接打开一个已有游戏——内置精品游戏或小主人做过/玩过的游戏。" +
+    "孩子想玩某个游戏时，先用 list_my_creations 拿到 id，再用这个打开，秒开不卡。" +
+    "这是打开已有游戏的唯一方式，不要用 app_navigate 切页面来打开游戏。",
+  parameters: OpenCreationParams,
+  category: "channel",
+  isReadOnly: true,
+  needsPermission: false,
+  execute: async (
+    _toolCallId: string,
+    params: Static<typeof OpenCreationParams>,
+    context: ToolExecutionContext,
+  ): Promise<AgentToolResult<{ ok: boolean; error?: string }>> => {
+    const ctx = context as MobileToolExecutionContext;
+    const isBuiltin = BUILTIN_GAME_IDS.has(params.id);
+    const builtinTitle = BUILTIN_GAME_META.find((g) => g.id === params.id)?.title;
+    const creation = ctx.listCreations().find((c) => c.id === params.id && c.kind === "game");
+
+    if (!isBuiltin && !creation) {
+      const err = `未找到 id=${params.id} 的游戏，请先用 list_my_creations 确认可用 id`;
+      return {
+        content: [{ type: "text", text: JSON.stringify({ ok: false, error: err }) }],
+        details: { ok: false, error: err },
+      };
+    }
+
+    const title = builtinTitle ?? creation?.title ?? "游戏";
+    ctx.emit({ type: "open_creation", payload: { id: params.id, title } });
+    return {
+      content: [{ type: "text", text: JSON.stringify({ ok: true, id: params.id, title }) }],
+      details: { ok: true },
     };
   },
 };

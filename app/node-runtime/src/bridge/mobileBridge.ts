@@ -21,6 +21,7 @@ import { createMobileStreamFnFactory } from "../host/mobile-stream-fn-factory.js
 import { createMobileToolContext } from "../host/mobile-tool-context.js";
 import { childSafeErrorMessage } from "../safety/child-safe-response.js";
 import { createMobileTts, type MobileTts } from "../host/mobile-tts.js";
+import { checkPlaygroundHtmlSafety, wrapPlaygroundHtml } from "../tools/playground-html.js";
 import type { SystemLogBuffer } from "../perf/system-logs.js";
 
 /** bridge 的宿主环境依赖（安全存储 / 网关 / 平台信息，由 index.ts 注入） */
@@ -144,7 +145,6 @@ export function createMobileBridge(deps: MobileBridgeDeps) {
       const message = err instanceof Error ? err.message : String(err);
       deps.log?.(`[tts] 合成失败: ${message} (文本长度 ${ttsText.length})`);
       deps.emit({ type: "tts_failed", payload: { code: "tts_error", message } });
-      deps.emit({ type: "agent_error", payload: { message: childSafeErrorMessage("tts_error"), code: "tts_error" } });
     }
   }
 
@@ -230,6 +230,72 @@ export function createMobileBridge(deps: MobileBridgeDeps) {
       });
       emitEvent({ type: "confirm_request", payload: { requestId, kind, title } });
     });
+  }
+
+  /** 构造后台生成互动页面 HTML 的提示词（约束自包含 + 儿童安全，对齐 checkPlaygroundHtmlSafety）。 */
+  function buildPlaygroundPrompt(spec: { type: string; title: string; description: string }): string {
+    return [
+      `请为 3-8 岁儿童生成一个可在沙箱 WebView 里运行的"${spec.title}"（类型：${spec.type}）。`,
+      `玩法/内容：${spec.description}`,
+      "硬性要求：",
+      "1. 只输出完整、自包含的 HTML，内联全部 CSS/JS，不要任何解释文字、不要 markdown 代码围栏。",
+      "2. 禁止外部资源与网络：不得出现 http(s):// 外链、fetch、XMLHttpRequest、WebSocket、eval。",
+      "3. 按钮大、色彩鲜明、适合手指点按，无文字阅读门槛；总大小控制在 50KB 以内。",
+      "4. 直接以 <!doctype html> 或 <div>/<html> 开头。",
+    ].join("\n");
+  }
+
+  /** 去除模型可能包裹的 markdown 代码围栏 */
+  function stripCodeFence(s: string): string {
+    return s.replace(/^\s*```(?:html)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
+  }
+
+  /**
+   * 后台异步生成互动页面：不阻塞主对话轮。生成完成后 emit playground_open 打开游戏，
+   * 并把结果以一条系统提示消息投喂主 Agent（经命令队列串行化），让宠物开口告知小主人。
+   */
+  function generatePlaygroundBackground(spec: {
+    type: "game" | "effect" | "interactive";
+    title: string;
+    description: string;
+  }): void {
+    const sess = session;
+    if (!sess) return;
+    const epochAtStart = ttsEpoch;
+    deps.log?.(`[mobileBridge] 后台生成互动页面 title=${spec.title} type=${spec.type}`);
+    void (async () => {
+      try {
+        const raw = await sess.generateText(buildPlaygroundPrompt(spec));
+        const html = stripCodeFence(raw);
+        // 生成期间被打断/重开会话 → 丢弃迟到产物，不打扰新语境
+        if (epochAtStart !== ttsEpoch || session !== sess) {
+          deps.log?.(`[mobileBridge] 丢弃过期的后台生成 title=${spec.title}`);
+          return;
+        }
+        const safety = checkPlaygroundHtmlSafety(html);
+        if (!safety.safe || !html) {
+          deps.log?.(`[mobileBridge] 后台生成不安全/为空 title=${spec.title}: ${safety.reason ?? "empty"}`);
+          void handleCommand({
+            type: "send_user_message",
+            payload: { text: `（系统提示）刚才想做的《${spec.title}》没做成功，请用一句温柔的话告诉小主人待会儿再试试，然后换个话题继续陪 TA 聊。`, sessionId: sessionId ?? "" },
+          });
+          return;
+        }
+        emitEvent({ type: "playground_open", payload: { type: spec.type, title: spec.title, html: wrapPlaygroundHtml(html) } });
+        void handleCommand({
+          type: "send_user_message",
+          payload: { text: `（系统提示）《${spec.title}》已经做好并打开了，请用一句开心的话告诉小主人可以开始玩了。`, sessionId: sessionId ?? "" },
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        deps.log?.(`[mobileBridge] 后台生成失败 title=${spec.title}: ${message}`);
+        if (epochAtStart !== ttsEpoch || session !== sess) return;
+        void handleCommand({
+          type: "send_user_message",
+          payload: { text: `（系统提示）刚才想做的《${spec.title}》没做成功，请用一句温柔的话告诉小主人待会儿再试试。`, sessionId: sessionId ?? "" },
+        });
+      }
+    })();
   }
 
   /** 单次对话耗时打点 */
@@ -336,6 +402,7 @@ export function createMobileBridge(deps: MobileBridgeDeps) {
         listCreations: () => knownCreations,
         getEditTarget: () => editTarget,
         requestConfirm: (kind, title) => requestConfirm(kind, title),
+        generatePlayground: (spec) => generatePlaygroundBackground(spec),
         logToolAudit: (row) =>
           deps.log?.(`[tool-audit] ${row.toolName} err=${row.isError} ${row.resultSummary}`),
       });

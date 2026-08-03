@@ -18,8 +18,11 @@ export interface SystemLogsScreenProps {
   readonly logTotalCount: number;
 }
 
-/** 日志筛选：全部 / 运行（info+warn）/ 错误（error） */
-type LogFilter = "all" | "run" | "error";
+/** 日志筛选：全部 / 运行（info+warn）/ 错误（error）/ 性能（CPU/内存采样） */
+type LogFilter = "all" | "run" | "error" | "perf";
+
+/** 性能采样日志前缀（perf-monitor 写入的 `perf cpu=...`） */
+const PERF_PREFIX = "perf ";
 
 const LOG_LEVEL_COLORS: Record<string, string> = {
   info: "#4CAF50",
@@ -44,9 +47,11 @@ export function SystemLogsScreen(props: SystemLogsScreenProps): React.JSX.Elemen
     const filtered =
       filter === "error"
         ? logs.filter((l) => l.level === "error")
-        : filter === "run"
-          ? logs.filter((l) => l.level !== "error")
-          : logs;
+        : filter === "perf"
+          ? logs.filter((l) => l.message.startsWith(PERF_PREFIX))
+          : filter === "run"
+            ? logs.filter((l) => l.level !== "error" && !l.message.startsWith(PERF_PREFIX))
+            : logs;
     return [...filtered].sort((a, b) => b.at - a.at); // 时间倒序
   }, [logs, filter]);
 
@@ -82,7 +87,7 @@ export function SystemLogsScreen(props: SystemLogsScreenProps): React.JSX.Elemen
       </View>
 
       <View style={styles.toolbar}>
-        {(["all", "run", "error"] as const).map((f) => (
+        {(["all", "run", "error", "perf"] as const).map((f) => (
           <TouchableOpacity
             key={f}
             style={[styles.sortBtn, filter === f && styles.sortBtnActive]}
@@ -90,7 +95,7 @@ export function SystemLogsScreen(props: SystemLogsScreenProps): React.JSX.Elemen
             activeOpacity={0.7}
           >
             <Text style={[styles.sortText, filter === f && styles.sortTextActive]}>
-              {f === "all" ? "全部" : f === "run" ? "运行" : "错误"}
+              {f === "all" ? "全部" : f === "run" ? "运行" : f === "error" ? "错误" : "性能"}
             </Text>
           </TouchableOpacity>
         ))}

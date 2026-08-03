@@ -22,7 +22,9 @@ export async function loadImageProviderConfig(storage: SecureStorage): Promise<I
       typeof p.apiKey === "string" &&
       typeof p.model === "string"
     ) {
-      return { baseUrl: p.baseUrl, apiKey: p.apiKey, model: p.model };
+      const provider =
+        p.provider === "rightcode" || p.provider === "gemini" ? p.provider : "openai";
+      return { provider, baseUrl: p.baseUrl, apiKey: p.apiKey, model: p.model };
     }
   } catch {
     /* fallthrough */

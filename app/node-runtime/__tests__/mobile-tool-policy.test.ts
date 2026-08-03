@@ -36,6 +36,7 @@ describe("mobile-tool-policy", () => {
         "get_edit_target",
         "image_generate",
         "list_my_creations",
+        "open_creation",
         "message",
         "task_complete",
         "update_child_profile",

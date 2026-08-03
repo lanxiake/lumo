@@ -20,8 +20,14 @@ const WebPlaygroundParams = Type.Object({
     Type.Literal("interactive"),
   ], { description: "页面类型" }),
   title: Type.String({ description: "展示标题" }),
-  description: Type.String({ description: "儿童可理解的内容描述" }),
-  html: Type.String({ minLength: 1, description: "完整自包含 HTML" }),
+  description: Type.String({ description: "儿童可理解的内容描述；做新游戏时请写清玩法细节，后台据此生成" }),
+  html: Type.Optional(
+    Type.String({
+      description:
+        "完整自包含 HTML。做全新游戏时【不要】自己写 html——留空即可，系统会在后台生成，你不用等；" +
+        "仅当【改一改】已有游戏（先 get_edit_target 拿到原码）时才在原码上小改后传入。",
+    }),
+  ),
 });
 
 type WebPlaygroundInput = Static<typeof WebPlaygroundParams>;
@@ -40,19 +46,26 @@ export const createWebPlaygroundToolConfig: MtBotToolConfig<typeof WebPlayground
     _toolCallId: string,
     params: WebPlaygroundInput,
     context: ToolExecutionContext,
-  ): Promise<AgentToolResult<{ ok: boolean; error?: string }>> => {
+  ): Promise<AgentToolResult<{ ok: boolean; error?: string; status?: string }>> => {
     // 工具层强制确认门控：不依赖 AI 提示词自觉调用 confirm_activity。
     // 编辑既有游戏（getEditTarget 命中）视为孩子已发起，跳过确认，避免改一次问一次。
     const mobileCtx = context as MobileToolExecutionContext;
-    const isEditing = mobileCtx.getEditTarget?.() != null;
-    if (!isEditing) {
-      const approved = await mobileCtx.requestConfirm("game", params.title);
-      if (!approved) {
-        return {
-          content: [{ type: "text", text: JSON.stringify({ ok: false, error: "declined" }) }],
-          details: { ok: false, error: "declined" },
-        };
-      }
+
+    // 未提供 html 且宿主支持后台生成 → 派发异步生成，本轮工具立即返回（主对话不被大段 HTML 阻塞）。
+    // 编辑流（isEditing）总是带上改好的 html，走下方同步路径就地替换。
+    if (!params.html && mobileCtx.generatePlayground) {
+      mobileCtx.generatePlayground({ type: params.type, title: params.title, description: params.description });
+      return {
+        content: [{ type: "text", text: JSON.stringify({ ok: true, status: "generating" }) }],
+        details: { ok: true, status: "generating" },
+      };
+    }
+    if (!params.html) {
+      const err = "缺少 html：宿主不支持后台生成时必须提供完整 html";
+      return {
+        content: [{ type: "text", text: JSON.stringify({ ok: false, error: err }) }],
+        details: { ok: false, error: err },
+      };
     }
 
     const safety = checkPlaygroundHtmlSafety(params.html);

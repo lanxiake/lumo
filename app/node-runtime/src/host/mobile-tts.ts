@@ -60,6 +60,9 @@ export function buildEmotionSsml(voice: string, text: string, style: string, spe
 /** 单次 TTS 合成超时（ms；Edge TTS 首包通常 1~3s，真机弱网放宽到 15s） */
 const DEFAULT_SYNTHESIZE_TIMEOUT_MS = 15_000;
 
+/** 弱网重试次数（首次失败后再试 N 次；指数退避）。0 = 不重试。 */
+const DEFAULT_MAX_RETRIES = 2;
+
 /** 用 Promise.race 给合成加超时 */
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return Promise.race([
@@ -68,6 +71,20 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
       setTimeout(() => reject(new Error(`${label} 超时 (${ms}ms)`)), ms),
     ),
   ]);
+}
+
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * 按句切分：句末标点（。！？…；.!?;）或换行处断句，保留标点在句尾。
+ * 按句缓存的基础——台词、常用短句高频复用，整段几乎不重复。
+ */
+export function splitSentences(text: string): string[] {
+  const parts = text
+    .split(/(?<=[。！？…；.!?;\n\r])/u)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  return parts.length > 0 ? parts : [text.trim()].filter((s) => s.length > 0);
 }
 
 export interface MobileTtsDeps {
@@ -81,6 +98,8 @@ export interface MobileTtsDeps {
   readonly style?: string;
   /** 合成超时（毫秒） */
   readonly timeoutMs?: number;
+  /** 弱网重试次数（缺省 2；每次重试重建引擎，斩断坏死 WS 的连环失败） */
+  readonly maxRetries?: number;
   /** 脱敏日志 */
   readonly log?: (msg: string) => void;
 }
@@ -186,42 +205,79 @@ export function createMobileTts(deps: MobileTtsDeps = {}) {
     return e;
   }
 
+  const timeoutMs = deps.timeoutMs ?? DEFAULT_SYNTHESIZE_TIMEOUT_MS;
+  const maxRetries = deps.maxRetries ?? DEFAULT_MAX_RETRIES;
+
+  /** 合成单句为 mp3 Buffer（无缓存）：失败重建引擎 + 有限重试。空音频视为失败。 */
+  async function synthOnce(clean: string): Promise<Buffer> {
+    let lastErr: unknown;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const e = await ensureEngine();
+        // toStream/rawToStream 同步抛错（如引擎内部状态坏死）也需被捕获走重试。
+        const { audioStream } =
+          style && e.rawToStream
+            ? e.rawToStream(buildEmotionSsml(voice, clean, style, speed))
+            : e.toStream(clean, { rate: speed });
+
+        const chunks: Buffer[] = [];
+        const collectPromise = new Promise<void>((resolve, reject) => {
+          audioStream.on("data", (chunk: Buffer) => chunks.push(Buffer.from(chunk)));
+          audioStream.on("end", () => resolve());
+          audioStream.on("error", (err: Error) => reject(err));
+        });
+
+        await withTimeout(collectPromise, timeoutMs, "TTS 合成");
+        const buffer = Buffer.concat(chunks);
+        if (buffer.length === 0) throw new Error("TTS 合成返回空音频");
+        return buffer;
+      } catch (err) {
+        lastErr = err;
+        engine = null; // 重置引擎：下次 ensureEngine 重建 WS，斩断坏死连接的连环失败
+        if (attempt < maxRetries) {
+          const backoff = 500 * (attempt + 1); // 0.5s / 1s 指数退避
+          deps.log?.(
+            `[tts] 合成失败(第${attempt + 1}次) ${err instanceof Error ? err.message : String(err)}，${backoff}ms 后重试`,
+          );
+          await sleep(backoff);
+        }
+      }
+    }
+    throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+  }
+
   return {
-    /** 合成文本为 mp3 base64；空文本返回 null；失败抛出（调用方转 tts_error） */
+    /**
+     * 合成文本为 mp3 base64；空文本返回 null；失败抛出（调用方转 tts_error）。
+     * 按句缓存：整段切句 → 逐句查缓存/合成 → 字节首尾拼接（Edge CBR mp3 帧可直接拼接）。
+     * ponytail: 字节直接拼接，非严格 mp3 容器重封装；Edge 输出 CBR 帧实测可播，
+     *           若换成 VBR/带 ID3 帧的引擎需改成帧级重封装。
+     */
     async synthesize(text: string): Promise<TtsResult | null> {
       const clean = sanitizeTtsText(cleanTtsText(text));
       if (!clean) return null;
 
-      const cacheKey = `${voice}|${speed}|${style}|${clean}`;
-      const cached = cacheGet(cacheKey);
-      if (cached) {
-        deps.log?.(`[tts] 缓存命中 文本=${clean.length}字 字节=${cached.byteLength}`);
-        return cached;
+      const sentences = splitSentences(clean);
+      const buffers: Buffer[] = [];
+      let hits = 0;
+      for (const sentence of sentences) {
+        const cacheKey = `${voice}|${speed}|${style}|${sentence}`;
+        const cached = cacheGet(cacheKey);
+        if (cached) {
+          buffers.push(Buffer.from(cached.audioBase64, "base64"));
+          hits++;
+          continue;
+        }
+        const buffer = await synthOnce(sentence);
+        cacheSet(cacheKey, encodeTtsResult(buffer));
+        buffers.push(buffer);
       }
 
-      const e = await ensureEngine();
-      // 有情绪风格且引擎支持 rawToStream → 走 express-as SSML；否则普通 toStream。
-      const { audioStream } =
-        style && e.rawToStream
-          ? e.rawToStream(buildEmotionSsml(voice, clean, style, speed))
-          : e.toStream(clean, { rate: speed });
-
-      const chunks: Buffer[] = [];
-      const collectPromise = new Promise<void>((resolve, reject) => {
-        audioStream.on("data", (chunk: Buffer) => chunks.push(Buffer.from(chunk)));
-        audioStream.on("end", () => resolve());
-        audioStream.on("error", (err: Error) => reject(err));
-      });
-
-      await withTimeout(collectPromise, deps.timeoutMs ?? DEFAULT_SYNTHESIZE_TIMEOUT_MS, "TTS 合成");
-      const buffer = Buffer.concat(chunks);
-      if (buffer.length === 0) {
-        // 空音频视为合成失败：抛出让调用方转 tts_error 提示，而非静默无声。
-        throw new Error("TTS 合成返回空音频");
-      }
-      const result = encodeTtsResult(buffer);
-      cacheSet(cacheKey, result);
-      deps.log?.(`[tts] 合成完成 文本=${clean.length}字 字节=${buffer.length}`);
+      const merged = Buffer.concat(buffers);
+      const result = encodeTtsResult(merged);
+      deps.log?.(
+        `[tts] 合成完成 ${sentences.length}句(命中${hits}) 文本=${clean.length}字 字节=${merged.length}`,
+      );
       return result;
     },
     /** 切换音色；下次合成时生效（重置引擎缓存以重新 setMetadata） */

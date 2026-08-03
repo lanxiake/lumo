@@ -14,6 +14,7 @@ import { getPetModelConfig } from "./config/model-registry.js";
 import type { ImageProviderConfig, MobileNodeCommand, MobileNodeEvent, ProviderConfig } from "./bridge/schema.js";
 import { createRemoteLogShipper, type ClientLogEntry } from "./host/remote-log-shipper.js";
 import { createSystemLogBuffer } from "./perf/system-logs.js";
+import { startPerfMonitor } from "./perf/perf-monitor.js";
 import { ensureOpenAiV1 } from "./host/provider-url.js";
 
 /**
@@ -105,6 +106,9 @@ export function startMobileHost(): void {
     process.stderr.write(`[kids-mobile] ${msg}\n`);
     systemLog.push(msg);
   };
+
+  // 性能监控：周期采集 CPU/内存写入系统日志（设置页「系统日志」可查）。
+  startPerfMonitor({ log: nodeLog });
 
   const bridge = createMobileBridge({
     emit: (event: MobileNodeEvent) => {

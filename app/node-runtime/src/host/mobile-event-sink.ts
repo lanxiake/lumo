@@ -18,6 +18,40 @@ import type { MobileNodeEvent } from "../bridge/schema.js";
 import { checkOutputSafety } from "../safety/output-safety.js";
 import { childSafeErrorMessage } from "../safety/child-safe-response.js";
 
+/**
+ * 工具入参/结果摘要 → 儿童卡片可读的一句话（非 JSON）。
+ *
+ * 卡片已有「工具中文标签 + 成败徽章」，明细行只需补一个"说清在做什么"的关键值：
+ * 从入参/结果里挑一个显著字段（搜索词/画的内容/游戏标题…）。纯状态对象
+ * （如 {ok:true}）无显著字段 → 返回 undefined，不往儿童 UI 塞 JSON。
+ */
+const SUMMARY_MAX = 120;
+const SALIENT_KEYS = [
+  "query", "prompt", "title", "text", "keyword", "word", "name", "target", "message", "reason",
+] as const;
+
+export function summarizeToolPayload(value: unknown): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  let s: string | undefined;
+  if (typeof value === "string") {
+    s = value;
+  } else if (typeof value === "object") {
+    const obj = value as Record<string, unknown>;
+    for (const k of SALIENT_KEYS) {
+      const v = obj[k];
+      if (typeof v === "string" && v.trim() && !v.startsWith("data:")) {
+        s = v;
+        break;
+      }
+    }
+  } else {
+    s = String(value);
+  }
+  s = s?.trim();
+  if (!s) return undefined;
+  return s.length > SUMMARY_MAX ? s.slice(0, SUMMARY_MAX) + "…" : s;
+}
+
 export interface MobileEventSinkDeps {
   /** 事件外发（bridge → RN） */
   readonly emit: (event: MobileNodeEvent) => void;
@@ -81,23 +115,32 @@ export function createMobileEventSink(deps: MobileEventSinkDeps): EventSink {
           break;
         }
 
-        case "tool:start":
+        case "tool:start": {
+          const paramsSummary = summarizeToolPayload(event.args);
           deps.emit({
             type: "tool_started",
-            payload: { toolName: event.toolName, toolCallId: event.toolCallId },
+            payload: {
+              toolName: event.toolName,
+              toolCallId: event.toolCallId,
+              ...(paramsSummary ? { paramsSummary } : {}),
+            },
           });
           break;
+        }
 
-        case "tool:end":
+        case "tool:end": {
+          const resultSummary = summarizeToolPayload(event.result);
           deps.emit({
             type: "tool_finished",
             payload: {
               toolName: event.toolName,
               toolCallId: event.toolCallId,
               ok: !event.isError,
+              ...(resultSummary ? { resultSummary } : {}),
             },
           });
           break;
+        }
 
         case "agent:error":
           // 不泄漏堆栈：转友好话术。code 供 RN 侧分类展示（不进儿童 UI）。

@@ -8,9 +8,8 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { listMyCreationsToolConfig, getEditTargetToolConfig } from "../src/tools/creations-tool.js";
+import { listMyCreationsToolConfig, openCreationToolConfig, getEditTargetToolConfig } from "../src/tools/creations-tool.js";
 import { createWebPlaygroundToolConfig } from "../src/tools/web-playground-tool.js";
-import { mobileImageGenerateToolConfig } from "../src/tools/mobile-image-tool.js";
 import { BUILTIN_GAME_META } from "../src/config/builtin-games.js";
 import type { MobileToolExecutionContext, EditTarget } from "../src/host/mobile-tool-context.js";
 import type { CreationMeta } from "../src/bridge/schema.js";
@@ -57,6 +56,46 @@ describe("list_my_creations", () => {
   });
 });
 
+describe("open_creation", () => {
+  it("内置游戏 id → emit open_creation", async () => {
+    let ev: { type: string; payload: { id: string; title: string } } | null = null;
+    const res = await openCreationToolConfig.execute(
+      "t1",
+      { id: "builtin-fireworks" },
+      fakeCtx({ emit: (e) => { ev = e as typeof ev; } }),
+    );
+    expect((res.details as { ok: boolean }).ok).toBe(true);
+    expect(ev!.type).toBe("open_creation");
+    expect(ev!.payload.id).toBe("builtin-fireworks");
+    expect(ev!.payload.title).toBe("梦幻烟花秀");
+  });
+
+  it("历史作品 id → emit（title 取自 listCreations）", async () => {
+    let ev: { payload: { title: string } } | null = null;
+    const res = await openCreationToolConfig.execute(
+      "t1",
+      { id: "g1" },
+      fakeCtx({
+        listCreations: () => [{ kind: "game", id: "g1", title: "我的泡泡" }],
+        emit: (e) => { ev = e as typeof ev; },
+      }),
+    );
+    expect((res.details as { ok: boolean }).ok).toBe(true);
+    expect(ev!.payload.title).toBe("我的泡泡");
+  });
+
+  it("未知 id → ok:false 且不 emit", async () => {
+    let emitted = false;
+    const res = await openCreationToolConfig.execute(
+      "t1",
+      { id: "nope" },
+      fakeCtx({ emit: () => { emitted = true; } }),
+    );
+    expect((res.details as { ok: boolean }).ok).toBe(false);
+    expect(emitted).toBe(false);
+  });
+});
+
 describe("get_edit_target", () => {
   it("编辑态返回原始 html", async () => {
     const target: EditTarget = { gameId: "g1", title: "泡泡", html: "<html>x</html>" };
@@ -72,59 +111,18 @@ describe("get_edit_target", () => {
   });
 });
 
-describe("工具层强制确认门控", () => {
+// Task #9 移除了确认门控：工具直接执行、直接 emit，不再经 requestConfirm。
+describe("工具直接执行（无确认门控）", () => {
   const HTML = "<html><body>hi</body></html>";
 
-  it("create_web_playground 拒绝时不 emit playground_open", async () => {
+  it("create_web_playground 直接 emit playground_open", async () => {
     let emitted = false;
     const res = await createWebPlaygroundToolConfig.execute(
       "t1",
       { type: "game", title: "戳泡泡", description: "戳泡泡", html: HTML },
-      fakeCtx({ requestConfirm: async () => false, emit: () => { emitted = true; } }),
-    );
-    expect((res.details as { ok: boolean }).ok).toBe(false);
-    expect(emitted).toBe(false);
-  });
-
-  it("create_web_playground 同意时 emit playground_open", async () => {
-    let emitted = false;
-    const res = await createWebPlaygroundToolConfig.execute(
-      "t1",
-      { type: "game", title: "戳泡泡", description: "戳泡泡", html: HTML },
-      fakeCtx({ requestConfirm: async () => true, emit: () => { emitted = true; } }),
+      fakeCtx({ emit: () => { emitted = true; } }),
     );
     expect((res.details as { ok: boolean }).ok).toBe(true);
     expect(emitted).toBe(true);
-  });
-
-  it("编辑既有游戏时跳过确认（getEditTarget 命中）", async () => {
-    let confirmCalled = false;
-    let emitted = false;
-    const res = await createWebPlaygroundToolConfig.execute(
-      "t1",
-      { type: "game", title: "泡泡", description: "泡泡", html: HTML },
-      fakeCtx({
-        getEditTarget: () => ({ gameId: "g1", title: "泡泡", html: HTML }),
-        requestConfirm: async () => { confirmCalled = true; return true; },
-        emit: () => { emitted = true; },
-      }),
-    );
-    expect(confirmCalled).toBe(false);
-    expect((res.details as { ok: boolean }).ok).toBe(true);
-    expect(emitted).toBe(true);
-  });
-
-  it("image_generate 拒绝时不请求网关、返回 ok:false", async () => {
-    let fetched = false;
-    const res = await mobileImageGenerateToolConfig.execute(
-      "t1",
-      { prompt: "小猫" },
-      fakeCtx({
-        requestConfirm: async () => false,
-        fetchImpl: (async () => { fetched = true; return new Response("{}"); }) as unknown as typeof fetch,
-      }),
-    );
-    expect(res.details).toBeNull();
-    expect(fetched).toBe(false);
   });
 });

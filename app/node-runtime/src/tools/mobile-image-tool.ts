@@ -16,7 +16,7 @@ import {
   type ToolExecutionContext,
 } from "@lumo/agent-runtime";
 import type { MobileToolExecutionContext } from "../host/mobile-tool-context.js";
-import type { MobileNodeEvent } from "../bridge/schema.js";
+import type { ImageProviderKind, MobileNodeEvent } from "../bridge/schema.js";
 
 const CHILD_SAFE_IMAGE_PREFIX =
   "Create a cheerful, age-appropriate illustration for a 3-8 year old child. " +
@@ -30,6 +30,15 @@ interface GatewayImageGenerateResponse {
   width: number;
   height: number;
   revisedPrompt: string;
+}
+
+/** 统一生图结果：url 可直接给 RN <Image>（data URI 或 http 链接皆可） */
+interface DirectImageResult {
+  url: string;
+  width: number;
+  height: number;
+  revisedPrompt: string;
+  effectiveModelId: string;
 }
 
 /** Gateway 生图错误体 */
@@ -48,48 +57,21 @@ function buildGatewayImageGenerateUrl(gatewayUrl: string): string {
   return `${root}/v1/image/generate`;
 }
 
-/** OpenAI 兼容图像端点：POST {baseUrl}/images/generations（baseUrl 已含 /v1）。 */
-function buildOpenAiImageUrl(baseUrl: string): string {
-  const root = baseUrl.trim().replace(/\/+$/, "");
-  return `${root}/images/generations`;
-}
+const POLL_INTERVAL_MS = 2000;
+const POLL_MAX_MS = 3 * 60 * 1000;
 
-/**
- * 直连 OpenAI 兼容图像端点生图（独立运行模式，凭据本地持有不出进程）。
- * 请求 b64_json 回传，转 data URI 供 RN 直接展示。
- */
-async function generateImageViaDirect(options: {
-  baseUrl: string;
-  apiKey: string;
-  model: string;
-  prompt: string;
-  width?: number;
-  height?: number;
-  fetchImpl?: typeof fetch;
-}): Promise<GatewayImageGenerateResponse & { effectiveModelId: string }> {
-  const url = buildOpenAiImageUrl(options.baseUrl);
-  const size = `${options.width ?? DEFAULT_SIZE}x${options.height ?? DEFAULT_SIZE}`;
+/** 统一 fetch + 超时包装，抛出儿童友好错误。 */
+async function fetchJson(
+  url: string,
+  init: RequestInit,
+  doFetch: typeof fetch,
+  timeoutMs = GATEWAY_IMAGE_FETCH_TIMEOUT_MS,
+): Promise<{ ok: boolean; status: number; body: string; json: unknown }> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), GATEWAY_IMAGE_FETCH_TIMEOUT_MS);
-  const doFetch = options.fetchImpl ?? fetch;
-
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   let resp: Response;
   try {
-    resp = await doFetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${options.apiKey}`,
-      },
-      body: JSON.stringify({
-        model: options.model,
-        prompt: options.prompt,
-        n: 1,
-        size,
-        response_format: "b64_json",
-      }),
-      signal: controller.signal,
-    });
+    resp = await doFetch(url, { ...init, signal: controller.signal });
   } catch (err) {
     const isAbort = (err as Error).name === "AbortError";
     throw Object.assign(
@@ -99,36 +81,121 @@ async function generateImageViaDirect(options: {
   } finally {
     clearTimeout(timeout);
   }
-
-  const bodyText = await resp.text();
-  let parsed: unknown = {};
+  const body = await resp.text();
+  let json: unknown = {};
   try {
-    parsed = bodyText ? JSON.parse(bodyText) : {};
+    json = body ? JSON.parse(body) : {};
   } catch {
-    parsed = {};
+    json = {};
+  }
+  return { ok: resp.ok, status: resp.status, body, json };
+}
+
+function throwProviderError(status: number, body: string, json: unknown): never {
+  const e = json as GatewayImageErrorBody;
+  const message = e.error?.message ?? e.message ?? body.slice(0, 300) ?? `画画服务出了点问题 (${status})`;
+  throw Object.assign(new Error(message), { code: e.code ?? "PROVIDER_ERROR" });
+}
+
+/** OpenAI 兼容图像端点：POST {baseUrl}/images/generations（baseUrl 已含 /v1）。 */
+function buildOpenAiImageUrl(baseUrl: string): string {
+  return `${baseUrl.trim().replace(/\/+$/, "")}/images/generations`;
+}
+
+/** Right Code 站点级任务查询地址：由 baseUrl 推站点根（去掉 /draw... 段）+ /v1/tasks/{id}。 */
+function buildTaskQueryUrl(baseUrl: string, taskId: string): string {
+  const root = baseUrl.trim().replace(/\/+$/, "");
+  const site = root.replace(/\/draw(\/.*)?$/i, "");
+  return `${site}/v1/tasks/${taskId}`;
+}
+
+/** 从 Images 形状（data[].b64_json|url）或 Gemini 形状（candidates[].content.parts[].inline_data）取图。 */
+function extractImageFromResult(json: unknown, prompt: string, model: string): DirectImageResult {
+  const images = json as { data?: ReadonlyArray<{ b64_json?: string; url?: string; revised_prompt?: string }> };
+  const first = images.data?.[0];
+  if (first?.b64_json?.trim()) {
+    return { url: `data:image/png;base64,${first.b64_json}`, width: DEFAULT_SIZE, height: DEFAULT_SIZE, revisedPrompt: first.revised_prompt ?? prompt, effectiveModelId: model };
+  }
+  if (first?.url?.trim()) {
+    return { url: first.url, width: DEFAULT_SIZE, height: DEFAULT_SIZE, revisedPrompt: first.revised_prompt ?? prompt, effectiveModelId: model };
+  }
+  const gem = json as { candidates?: ReadonlyArray<{ content?: { parts?: ReadonlyArray<{ inline_data?: { mime_type?: string; data?: string }; inlineData?: { mimeType?: string; data?: string } }> } }> };
+  for (const part of gem.candidates?.[0]?.content?.parts ?? []) {
+    const inline = part.inline_data ?? part.inlineData;
+    const data = inline?.data;
+    if (data?.trim()) {
+      const mime = (inline as { mime_type?: string; mimeType?: string }).mime_type ?? (inline as { mimeType?: string }).mimeType ?? "image/png";
+      return { url: `data:${mime};base64,${data}`, width: DEFAULT_SIZE, height: DEFAULT_SIZE, revisedPrompt: prompt, effectiveModelId: model };
+    }
+  }
+  throw Object.assign(new Error("画作数据是空的，再试一次吧"), { code: "PROVIDER_ERROR" });
+}
+
+/** 轮询 Right Code 异步任务直到 completed/failed；返回结果 JSON（Images 或 Gemini 形状）。 */
+async function pollTask(baseUrl: string, apiKey: string, taskId: string, doFetch: typeof fetch): Promise<unknown> {
+  const url = buildTaskQueryUrl(baseUrl, taskId);
+  const deadline = Date.now() + POLL_MAX_MS;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+    const { ok, status, body, json } = await fetchJson(url, { method: "GET", headers: { Authorization: `Bearer ${apiKey}` } }, doFetch, 30_000);
+    if (!ok) throwProviderError(status, body, json);
+    const s = (json as { status?: string }).status;
+    if (s === "completed") return json;
+    if (s === "failed") {
+      const msg = (json as { error?: { message?: string } }).error?.message ?? "画画没成功";
+      throw Object.assign(new Error(msg), { code: "PROVIDER_ERROR" });
+    }
+  }
+  throw Object.assign(new Error("画画等太久啦，再试一次吧"), { code: "TIMEOUT" });
+}
+
+/**
+ * 直连上游生图（独立运行模式，凭据本地持有不出进程）。
+ * openai：同步 b64_json/url；rightcode：异步 Images + 轮询；gemini：异步 generateContent + 轮询。
+ */
+async function generateImageViaDirect(options: {
+  provider: ImageProviderKind;
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  prompt: string;
+  width?: number;
+  height?: number;
+  fetchImpl?: typeof fetch;
+}): Promise<DirectImageResult> {
+  const doFetch = options.fetchImpl ?? fetch;
+  const headers = { "Content-Type": "application/json", Authorization: `Bearer ${options.apiKey}` };
+  const root = options.baseUrl.trim().replace(/\/+$/, "");
+
+  if (options.provider === "gemini") {
+    const url = `${root}/v1beta/models/${options.model}:generateContent`;
+    const { ok, status, body, json } = await fetchJson(url, {
+      method: "POST", headers,
+      body: JSON.stringify({ async: true, contents: [{ role: "user", parts: [{ text: options.prompt }] }] }),
+    }, doFetch);
+    if (!ok) throwProviderError(status, body, json);
+    const taskId = (json as { task_id?: string }).task_id;
+    const result = taskId ? await pollTask(options.baseUrl, options.apiKey, taskId, doFetch) : json;
+    return extractImageFromResult(result, options.prompt, options.model);
   }
 
-  if (!resp.ok) {
-    const errBody = parsed as GatewayImageErrorBody;
-    const message =
-      errBody.error?.message ?? errBody.message ?? bodyText.slice(0, 300) ?? `画画服务出了点问题 (${resp.status})`;
-    throw Object.assign(new Error(message), { code: errBody.code ?? "PROVIDER_ERROR" });
-  }
+  // openai + rightcode 都走 Images 形状；rightcode 带 async:true 返回 task_id 后轮询。
+  const size = `${options.width ?? DEFAULT_SIZE}x${options.height ?? DEFAULT_SIZE}`;
+  const isAsync = options.provider === "rightcode";
+  const reqBody: Record<string, unknown> = { model: options.model, prompt: options.prompt, n: 1, size };
+  if (isAsync) reqBody.async = true;
+  else reqBody.response_format = "b64_json";
 
-  const data = parsed as { data?: ReadonlyArray<{ b64_json?: string; revised_prompt?: string }> };
-  const b64 = data.data?.[0]?.b64_json;
-  if (!b64?.trim()) {
-    throw Object.assign(new Error("画作数据是空的，再试一次吧"), { code: "PROVIDER_ERROR" });
-  }
+  // Right Code Images 端点为 {baseUrl:.../draw}/v1/images/generations；OpenAI 的 baseUrl 已含 /v1。
+  const imageUrl = isAsync ? `${root}/v1/images/generations` : buildOpenAiImageUrl(options.baseUrl);
+  const { ok, status, body, json } = await fetchJson(imageUrl, {
+    method: "POST", headers, body: JSON.stringify(reqBody),
+  }, doFetch);
+  if (!ok) throwProviderError(status, body, json);
 
-  return {
-    imageBase64: b64,
-    mimeType: "image/png",
-    width: options.width ?? DEFAULT_SIZE,
-    height: options.height ?? DEFAULT_SIZE,
-    revisedPrompt: data.data?.[0]?.revised_prompt ?? options.prompt,
-    effectiveModelId: options.model,
-  };
+  const taskId = (json as { task_id?: string }).task_id;
+  const result = taskId ? await pollTask(options.baseUrl, options.apiKey, taskId, doFetch) : json;
+  return extractImageFromResult(result, options.prompt, options.model);
 }
 
 function wrapChildSafePrompt(userPrompt: string): string {
@@ -262,23 +329,17 @@ export const mobileImageGenerateToolConfig: MtBotToolConfig<typeof MobileImageGe
   ): Promise<AgentToolResult<MobileImageGenerateResult | null>> => {
     const mobileContext = context as MobileToolExecutionContext;
 
-    // 工具层强制确认门控：画画前必须经孩子确认，不依赖 AI 提示词自觉。
-    const approved = await mobileContext.requestConfirm("drawing", params.prompt);
-    if (!approved) {
-      return {
-        content: [{ type: "text", text: JSON.stringify({ ok: false, error: "declined" }) }],
-        details: null,
-      };
-    }
-
     const prompt = wrapChildSafePrompt(params.prompt);
     const imageConfig = mobileContext.imageProviderConfig;
     // 有生图 provider 配置：直连（独立运行模式）；否则回退 gateway（需登录）。
     const modelId = params.modelId ?? imageConfig?.model ?? DEFAULT_IMAGE_MODEL;
 
     try {
-      const data = imageConfig
+      // 统一成 { url, width, height, revisedPrompt, effectiveModelId }：direct 已是此形状，
+      // gateway 回 base64 需转 data URI。
+      const data: DirectImageResult = imageConfig
         ? await generateImageViaDirect({
+            provider: imageConfig.provider ?? "openai",
             baseUrl: imageConfig.baseUrl,
             apiKey: imageConfig.apiKey,
             model: modelId,
@@ -287,26 +348,34 @@ export const mobileImageGenerateToolConfig: MtBotToolConfig<typeof MobileImageGe
             height: params.height,
             fetchImpl: mobileContext.fetchImpl,
           })
-        : await generateImageViaGateway({
-            gatewayUrl: mobileContext.gatewayUrl,
-            getAuthToken: mobileContext.getAuthToken,
-            getDeviceId: mobileContext.getDeviceId,
-            prompt,
-            modelId,
-            width: params.width,
-            height: params.height,
-            fetchImpl: mobileContext.fetchImpl,
-          });
+        : await (async () => {
+            const g = await generateImageViaGateway({
+              gatewayUrl: mobileContext.gatewayUrl,
+              getAuthToken: mobileContext.getAuthToken,
+              getDeviceId: mobileContext.getDeviceId,
+              prompt,
+              modelId,
+              width: params.width,
+              height: params.height,
+              fetchImpl: mobileContext.fetchImpl,
+            });
+            return {
+              url: `data:${g.mimeType};base64,${g.imageBase64}`,
+              width: g.width,
+              height: g.height,
+              revisedPrompt: g.revisedPrompt,
+              effectiveModelId: g.effectiveModelId,
+            };
+          })();
 
-      const dataUrl = `data:${data.mimeType};base64,${data.imageBase64}`;
       const event: MobileNodeEvent = {
         type: "image_ready",
-        payload: { url: dataUrl, prompt: params.prompt },
+        payload: { url: data.url, prompt: params.prompt },
       };
       mobileContext.emit(event);
 
       const result: MobileImageGenerateResult = {
-        url: dataUrl,
+        url: data.url,
         filename: params.filename,
         width: data.width,
         height: data.height,

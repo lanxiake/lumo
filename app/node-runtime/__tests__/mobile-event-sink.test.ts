@@ -50,12 +50,13 @@ describe("mobile-event-sink", () => {
 
   it("tool:start/end → tool_started/tool_finished（含 toolCallId）", () => {
     const { events, sink } = collect();
-    sink.emit({ type: "tool:start", instanceId: "i", toolCallId: "c", toolName: "web_search", args: {} });
-    sink.emit({ type: "tool:end", instanceId: "i", toolCallId: "c", toolName: "web_search", result: {}, isError: false });
+    sink.emit({ type: "tool:start", instanceId: "i", toolCallId: "c", toolName: "web_search", args: { query: "天气" } });
+    sink.emit({ type: "tool:end", instanceId: "i", toolCallId: "c", toolName: "web_search", result: { ok: true }, isError: false });
     expect(events).toContainEqual({
       type: "tool_started",
-      payload: { toolName: "web_search", toolCallId: "c" },
+      payload: { toolName: "web_search", toolCallId: "c", paramsSummary: "天气" },
     });
+    // 纯状态结果 {ok:true} 无显著字段 → 不带 resultSummary（成败由徽章表达）
     expect(events).toContainEqual({
       type: "tool_finished",
       payload: { toolName: "web_search", toolCallId: "c", ok: true },

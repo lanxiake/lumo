@@ -181,7 +181,7 @@ describe("mobileBridge", () => {
     bridge.dispose();
   });
 
-  it("TTS 合成失败 → agent_error(tts_error)，不影响已发的 agent_final", async () => {
+  it("TTS 合成失败 → tts_failed，不影响已发的 agent_final", async () => {
     const failing = fakeTts(async () => {
       throw new Error("edge ws down");
     });
@@ -194,7 +194,7 @@ describe("mobileBridge", () => {
     await vi.waitFor(
       () =>
         expect(
-          events.some((e) => e.type === "agent_error" && e.payload.code === "tts_error"),
+          events.some((e) => e.type === "tts_failed" && e.payload.code === "tts_error"),
         ).toBe(true),
       { timeout: 5000 },
     );

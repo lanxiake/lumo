@@ -105,4 +105,30 @@ describe("create_web_playground execute", () => {
     expect(res.details).toMatchObject({ ok: false });
     expect(sink.some((e) => e.type === "playground_open")).toBe(false);
   });
+
+  it("无 html + 宿主支持 → 派发后台生成并立即返回 generating（不 emit）", async () => {
+    const sink: MobileNodeEvent[] = [];
+    const dispatched: { title: string }[] = [];
+    const ctx = fakeContext(sink);
+    ctx.generatePlayground = (spec) => dispatched.push({ title: spec.title });
+    const res = await createWebPlaygroundToolConfig.execute(
+      "c",
+      { type: "game", title: "泡泡龙", description: "点破泡泡" },
+      ctx,
+    );
+    expect(res.details).toEqual({ ok: true, status: "generating" });
+    expect(dispatched).toEqual([{ title: "泡泡龙" }]);
+    // 后台生成，工具本身不 emit playground_open（由 bridge 生成完成后 emit）
+    expect(sink.some((e) => e.type === "playground_open")).toBe(false);
+  });
+
+  it("无 html + 宿主不支持后台生成 → 返回错误", async () => {
+    const sink: MobileNodeEvent[] = [];
+    const res = await createWebPlaygroundToolConfig.execute(
+      "c",
+      { type: "game", title: "泡泡龙", description: "点破泡泡" },
+      fakeContext(sink),
+    );
+    expect(res.details).toMatchObject({ ok: false });
+  });
 });

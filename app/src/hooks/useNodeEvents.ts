@@ -8,7 +8,7 @@
  * App.tsx 内已有逻辑处理；本 hook 只消费 App Action 类事件。
  */
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import type { MobileNodeEvent } from "../../node-runtime/src/bridge/schema";
 import type { AppActions, ChildSafeScreen, SoundName, ToastStyle } from "./useAppActions";
 
@@ -49,8 +49,13 @@ export function useNodeEvents(
   lastEvent: MobileNodeEvent | null,
   actions: AppActions,
 ): void {
+  // 每个 event 仅消费一次：actions 是每渲染新建的对象字面量（不稳定依赖），
+  // 若不去重，任一无条件 setState 的分支（如 show_toast）会 setState→重渲染→
+  // actions 新引用→effect 重跑同一 event→再 setState 死循环（Maximum update depth）。
+  const handledRef = useRef<MobileNodeEvent | null>(null);
   useEffect(() => {
-    if (!lastEvent) return;
+    if (!lastEvent || lastEvent === handledRef.current) return;
+    handledRef.current = lastEvent;
 
     switch (lastEvent.type) {
       case "navigate": {

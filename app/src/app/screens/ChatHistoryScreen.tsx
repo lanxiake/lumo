@@ -4,8 +4,9 @@
  * 独立渲染所有对话记录，气泡式布局。区别于 HUD 迷你 ChatHistory。
  */
 
-import React, { useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
+  Clipboard,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
   ScrollView,
@@ -35,6 +36,18 @@ export function ChatHistoryScreen(props: ChatHistoryScreenProps): React.JSX.Elem
   const { visible: paged, hasMore, loadOlder } = usePaginatedHistory({ sessionKey });
   const visible = paged.filter((m) => m.content.trim().length > 0);
   const lastId = visible[visible.length - 1]?.id;
+  // 长按复制消息文本 + 短暂"已复制"反馈
+  const [copiedId, setCopiedId] = useState<number | null>(null);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const copyText = useCallback((id: number, text: string) => {
+    Clipboard.setString(text);
+    setCopiedId(id);
+    if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+    copyTimerRef.current = setTimeout(() => setCopiedId(null), 1500);
+  }, []);
+  useEffect(() => () => {
+    if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+  }, []);
 
   useEffect(() => {
     requestAnimationFrame(() => {
@@ -128,10 +141,17 @@ export function ChatHistoryScreen(props: ChatHistoryScreenProps): React.JSX.Elem
                     <PetAvatarIcon size={20} />
                   </View>
                 )}
-                <View style={[styles.bubble, isUser ? styles.userBubble : styles.assistantBubble]}>
+                <TouchableOpacity
+                  style={[styles.bubble, isUser ? styles.userBubble : styles.assistantBubble]}
+                  activeOpacity={0.7}
+                  onLongPress={() => copyText(msg.id, msg.content)}
+                  delayLongPress={300}
+                >
                   <Text style={isUser ? styles.userText : styles.assistantText}>{msg.content}</Text>
-                  <Text style={[styles.time, isUser && styles.timeOnAccent]}>{time}</Text>
-                </View>
+                  <Text style={[styles.time, isUser && styles.timeOnAccent]}>
+                    {copiedId === msg.id ? "已复制" : time}
+                  </Text>
+                </TouchableOpacity>
                 {isUser && (
                   <View style={styles.avatar}>
                     <ChildAvatarIcon size={20} />

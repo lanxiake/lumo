@@ -866,6 +866,7 @@ function MainApp(props: MainAppProps): React.JSX.Element {
         toolLabel: label,
         status: "start",
         toolCallId: lastEvent.payload.toolCallId,
+        ...(lastEvent.payload.paramsSummary ? { paramsSummary: lastEvent.payload.paramsSummary } : {}),
       });
     }
     if (lastEvent.type === "tool_finished") {
@@ -877,7 +878,23 @@ function MainApp(props: MainAppProps): React.JSX.Element {
         status: "done",
         ok: lastEvent.payload.ok,
         toolCallId: lastEvent.payload.toolCallId,
+        ...(lastEvent.payload.resultSummary ? { resultSummary: lastEvent.payload.resultSummary } : {}),
       });
+    }
+    // Agent 请求按 id 打开已有游戏：内置库需包 CSP 沙箱，历史作品 html 已包过。
+    if (lastEvent.type === "open_creation") {
+      const { id } = lastEvent.payload;
+      const builtin = BUILTIN_GAMES.find((g) => g.id === id);
+      if (builtin) {
+        appActions.openPlayground(wrapPlaygroundHtml(builtin.html), builtin.title, { existingId: id });
+      } else {
+        const history = appState.gameHistory.find((g) => g.id === id);
+        if (history) {
+          appActions.openPlayground(history.html, history.title, { existingId: id });
+        } else {
+          console.warn(`[App] open_creation 未找到 id=${id}`);
+        }
+      }
     }
     if (lastEvent.type === "confirm_request") {
       setConfirmCard({
@@ -930,6 +947,7 @@ function MainApp(props: MainAppProps): React.JSX.Element {
     handleTurnEndedWithoutAudio,
     appActions,
     updateChildProfile,
+    appState.gameHistory,
   ]);
 
   // STT 结果 → VoiceSession 按 mode 路由（唤醒 / 打断 / 发消息）

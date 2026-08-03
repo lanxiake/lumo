@@ -44,6 +44,16 @@ export interface MobileToolExecutionContext extends ToolExecutionContext {
   getEditTarget: () => EditTarget | null;
   /** 请求孩子确认活动（confirm_activity），经 bridge 往返 RN，返回是否同意 */
   requestConfirm: (kind: "game" | "drawing", title: string) => Promise<boolean>;
+  /**
+   * 后台异步生成互动页面：主 Agent 不再自己吐大段 HTML，只派发规格立即返回。
+   * bridge 侧另起一次性 LLM 调用生成 HTML → 安全检查 → emit playground_open，
+   * 完成/报错时以系统消息通知主 Agent 开口告知小主人。缺省（测试）视为不支持。
+   */
+  generatePlayground?: (spec: {
+    type: "game" | "effect" | "interactive";
+    title: string;
+    description: string;
+  }) => void;
 }
 
 /** 移动端工具上下文的依赖注入 */
@@ -81,6 +91,12 @@ export interface MobileToolContextDeps {
   readonly getEditTarget?: () => EditTarget | null;
   /** 确认活动往返（confirm_activity 用），缺省视为同意（无家长在场时不阻塞） */
   readonly requestConfirm?: (kind: "game" | "drawing", title: string) => Promise<boolean>;
+  /** 后台异步生成互动页面（缺省不支持，工具回退同步路径或报错） */
+  readonly generatePlayground?: (spec: {
+    type: "game" | "effect" | "interactive";
+    title: string;
+    description: string;
+  }) => void;
 }
 
 /** 禁用能力统一抛错（防绕过白名单调用高危工具） */
@@ -122,6 +138,7 @@ export function createMobileToolContext(deps: MobileToolContextDeps): MobileTool
     getEditTarget: () => deps.getEditTarget?.() ?? null,
     requestConfirm: (kind, title) =>
       deps.requestConfirm ? deps.requestConfirm(kind, title) : Promise.resolve(true),
+    ...(deps.generatePlayground ? { generatePlayground: deps.generatePlayground } : {}),
 
     // ── 生图依赖（image_generate 工具用）：有 imageProviderConfig 走 direct，否则 gateway ──
     gatewayUrl: deps.gatewayUrl,

@@ -64,16 +64,26 @@ export interface ProviderConfig {
 }
 
 /**
- * 生图提供商配置（用户在设置页填写，直连 OpenAI 兼容图像端点
- * POST {baseUrl}/images/generations）。仅 OpenAI 协议——Anthropic 无生图。
+ * 生图提供商协议：
+ *  - openai：OpenAI Images 兼容，同步返回 b64_json/url（POST {baseUrl}/images/generations）
+ *  - rightcode：Right Code 异步 Images，提交带 async:true 拿 task_id，轮询站点级 /v1/tasks/{id}
+ *  - gemini：Right Code Gemini generateContent 兼容，异步（POST {baseUrl}/v1beta/models/{model}:generateContent）
+ * 缺省视为 openai（向后兼容旧配置）。
+ */
+export type ImageProviderKind = "openai" | "rightcode" | "gemini";
+
+/**
+ * 生图提供商配置（用户在设置页填写，直连上游图像端点）。
  * 缺省（未配置）时生图工具回退 gateway 兜底路径。
  */
 export interface ImageProviderConfig {
-  /** API 基础 URL（如 https://api.openai.com/v1，已含 /v1） */
+  /** 协议类型；缺省 openai */
+  readonly provider?: ImageProviderKind;
+  /** API 基础 URL（openai 已含 /v1；rightcode/gemini 形如 https://www.rightapi.ai/draw） */
   readonly baseUrl: string;
   /** API Key */
   readonly apiKey: string;
-  /** 生图模型 ID（如 dall-e-3 / gpt-image-1） */
+  /** 生图模型 ID（如 dall-e-3 / gpt-image-1 / nano-banana-fast） */
   readonly model: string;
 }
 
@@ -208,7 +218,12 @@ export type MobileNodeEvent =
   | { readonly type: "agent_thinking"; readonly payload: { readonly text: string } }
   | {
       readonly type: "tool_started";
-      readonly payload: { readonly toolName: string; readonly toolCallId?: string };
+      readonly payload: {
+        readonly toolName: string;
+        readonly toolCallId?: string;
+        /** 入参摘要（脱敏截断），供聊天卡片展开展示 */
+        readonly paramsSummary?: string;
+      };
     }
   | {
       readonly type: "tool_finished";
@@ -216,6 +231,8 @@ export type MobileNodeEvent =
         readonly toolName: string;
         readonly toolCallId?: string;
         readonly ok: boolean;
+        /** 结果摘要（脱敏截断），供聊天卡片展开展示 */
+        readonly resultSummary?: string;
       };
     }
   | {
@@ -266,6 +283,12 @@ export type MobileNodeEvent =
   | {
       readonly type: "playground_close";
       readonly payload: { readonly reason: "user" | "timeout" | "complete"; readonly score?: number };
+    }
+  | {
+      // 按 id 打开已有游戏（内置精品库或小主人历史作品）。html 在 RN 侧，
+      // Node 只发 id + title，RN 从 BUILTIN_GAMES / gameHistory 取 html 打开。
+      readonly type: "open_creation";
+      readonly payload: { readonly id: string; readonly title: string };
     }
   | {
       // 系统日志回传（get_system_logs 的响应）：运行/错误日志行 + 累计总数

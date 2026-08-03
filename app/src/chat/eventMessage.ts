@@ -37,6 +37,10 @@ export interface ToolActivityEventPayload {
   readonly ok?: boolean;
   /** 用于把 start/end 合并为同一张卡片 */
   readonly toolCallId?: string;
+  /** 入参摘要（脱敏截断），status=start 时展示 */
+  readonly paramsSummary?: string;
+  /** 结果摘要（脱敏截断），status=done 时展示 */
+  readonly resultSummary?: string;
 }
 
 export type ChatEventPayload =
@@ -63,6 +67,8 @@ export function toolLabelFor(toolName: string): string {
       return "查资料";
     case "list_my_creations":
       return "找作品";
+    case "open_creation":
+      return "打开游戏";
     case "get_edit_target":
       return "改游戏";
     case "app_navigate":
@@ -94,6 +100,8 @@ export function toolIconFor(toolName: string): string {
       return "🔍";
     case "list_my_creations":
       return "📁";
+    case "open_creation":
+      return "🎮";
     case "get_edit_target":
       return "✏️";
     case "app_navigate":
@@ -122,6 +130,8 @@ export interface ToolCardView {
   readonly statusText: string;
   /** 语义色调，供 UI 选择卡片配色 */
   readonly tone: "running" | "done" | "error";
+  /** 明细行（入参或结果摘要），供卡片展开展示；无摘要则缺省 */
+  readonly detail?: string;
 }
 
 /**
@@ -132,12 +142,18 @@ export function toolCardView(payload: ToolActivityEventPayload): ToolCardView {
   const label = payload.toolLabel || toolLabelFor(payload.toolName);
   const icon = toolIconFor(payload.toolName);
   if (payload.status === "start") {
-    return { icon, label, statusText: "进行中…", tone: "running" };
+    return {
+      icon, label, statusText: "进行中…", tone: "running",
+      ...(payload.paramsSummary ? { detail: `“${payload.paramsSummary}”` } : {}),
+    };
   }
+  // 完成时优先展示结果摘要；缺省回退到入参摘要（合并卡片时 start 的入参仍有参考价值）
+  const raw = payload.resultSummary || payload.paramsSummary;
+  const detail = raw ? `“${raw}”` : undefined;
   if (payload.ok === false) {
-    return { icon, label, statusText: "没成功", tone: "error" };
+    return { icon, label, statusText: "没成功", tone: "error", ...(detail ? { detail } : {}) };
   }
-  return { icon, label, statusText: "完成", tone: "done" };
+  return { icon, label, statusText: "完成", tone: "done", ...(detail ? { detail } : {}) };
 }
 
 export function encodeEventMessage(payload: ChatEventPayload): string {

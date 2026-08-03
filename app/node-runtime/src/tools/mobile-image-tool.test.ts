@@ -47,7 +47,7 @@ describe("mobileImageGenerateToolConfig direct 分支", () => {
     }) as unknown as typeof fetch;
 
     const ctx = fakeContext({
-      imageProviderConfig: { baseUrl: "https://api.openai.com/v1", apiKey: "sk-x", model: "dall-e-3" },
+      imageProviderConfig: { provider: "openai", baseUrl: "https://api.openai.com/v1", apiKey: "sk-x", model: "dall-e-3" },
       fetchImpl,
       emit: (e) => events.push(e),
     });
@@ -60,18 +60,33 @@ describe("mobileImageGenerateToolConfig direct 分支", () => {
     const ready = events.find((e) => e.type === "image_ready");
     expect(ready).toBeDefined();
     expect(ready?.type === "image_ready" && ready.payload.url).toBe("data:image/png;base64,AAAA");
-    expect(result.details?.model).toBe("dall-e-3");
+    const details = result.details as { model?: string } | null;
+    expect(details?.model).toBe("dall-e-3");
   });
 
-  it("孩子拒绝确认时不生图", async () => {
+  it("rightcode 异步：提交带 async 拿 task_id → 轮询 /v1/tasks 取图", async () => {
+    const urls: string[] = [];
     const events: MobileNodeEvent[] = [];
+    const fetchImpl = (async (url: string, init?: RequestInit) => {
+      urls.push(url);
+      if (init?.method === "POST") {
+        const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+        expect(body.async).toBe(true);
+        return { ok: true, status: 200, text: async () => JSON.stringify({ task_id: "task_1", status: "processing" }) } as Response;
+      }
+      return { ok: true, status: 200, text: async () => JSON.stringify({ status: "completed", data: [{ b64_json: "BBBB" }] }) } as Response;
+    }) as unknown as typeof fetch;
+
     const ctx = fakeContext({
-      requestConfirm: async () => false,
-      imageProviderConfig: { baseUrl: "https://api.openai.com/v1", apiKey: "sk-x", model: "dall-e-3" },
+      imageProviderConfig: { provider: "rightcode", baseUrl: "https://www.rightapi.ai/draw", apiKey: "sk-x", model: "nano-banana-fast" },
+      fetchImpl,
       emit: (e) => events.push(e),
     });
-    const result = await mobileImageGenerateToolConfig.execute("call-2", { prompt: "x" }, ctx);
-    expect(result.details).toBeNull();
-    expect(events.find((e) => e.type === "image_ready")).toBeUndefined();
+
+    await mobileImageGenerateToolConfig.execute("call-3", { prompt: "太空猫" }, ctx);
+    expect(urls[0]).toBe("https://www.rightapi.ai/draw/v1/images/generations");
+    expect(urls[1]).toBe("https://www.rightapi.ai/v1/tasks/task_1");
+    const ready = events.find((e) => e.type === "image_ready");
+    expect(ready?.type === "image_ready" && ready.payload.url).toBe("data:image/png;base64,BBBB");
   });
 });
