@@ -439,6 +439,36 @@ describe("voiceSessionController", () => {
       expect(result.effects.some((e) => e.type === "stop_tts")).toBe(true);
     });
 
+    it("多条 TTS 快连：回声匹配较早那条（被新句覆盖）仍应拒为回声", () => {
+      // 复现 bug：agent_final 连发覆盖 lastTtsText，但音频排队顺序播放，
+      // 扬声器此刻仍在播较早那条，回声 partial 匹配旧文本却被漏判触发自打断。
+      let t = 1000;
+      const c = createVoiceSessionController({
+        mode: "phone_call",
+        petVisible: true,
+        duplexEnabled: true,
+        now: () => t,
+        echoGuardMs: 300,
+      });
+      c.setLastTtsText("我找到啦咱们还没有警察抓小偷的游戏我现在就帮你做一个");
+      c.setLastTtsText("做好啦警察抓小偷的游戏正在路上马上就来找你玩啦"); // 覆盖 lastTtsText
+      c.onTtsPlayStart();
+      t = 1000 + 2000; // 过 echoGuard
+      c.onMicLevel(0.09); // 过地板
+      // 回声 partial 高度相似「较早那条」，应被逐条比对拒为回声（不武装、不打断）
+      const arm = c.onSpeechPartial("我找到了咱们还没有警察抓小偷的游戏我现在就帮你做", {
+        sessionReady: true,
+        aiReplying: true,
+      });
+      expect(arm.effects).toEqual([]);
+      t += 300;
+      const next = c.onSpeechPartial("我找到了咱们还没有警察抓小偷的游戏我现在就帮你做一", {
+        sessionReady: true,
+        aiReplying: true,
+      });
+      expect(next.effects.some((e) => e.type === "stop_tts")).toBe(false);
+    });
+
     it("mic 过地板 + 干净有效文本：首帧武装（回声区分交给文本门，不再比播放峰值）", () => {
       // 设计变更（2026-07-24）：带 AEC 设备上 mic 被压到与 play 不同量级，能量比失效，
       // 已改为能量地板门。干净有效文本在过地板后应「武装」（返回 []，等二次确认），

@@ -19,9 +19,11 @@ import type { MobileToolExecutionContext } from "../host/mobile-tool-context.js"
 import type { ImageProviderKind, MobileNodeEvent } from "../bridge/schema.js";
 
 const CHILD_SAFE_IMAGE_PREFIX =
-  "Create a cheerful, age-appropriate illustration for a 3-8 year old child. " +
-  "The image must be warm, cute, colorful, non-scary, and free of text, watermarks, violence, " +
-  "adult themes, or any personal information. ";
+  "Create a rich, detailed, professional-quality illustration for a 3-8 year old child. " +
+  "Use warm vivid colors, clear composition, and expressive storybook-style detail with a " +
+  "well-structured scene (distinct foreground subject and supporting background). A few short, " +
+  "simple words or labels drawn in the picture are allowed when they help tell the story. " +
+  "Keep it cute, friendly and non-scary — no violence, adult themes, watermarks, or personal information. ";
 
 /** Gateway 生图响应体 */
 interface GatewayImageGenerateResponse {
@@ -58,7 +60,7 @@ function buildGatewayImageGenerateUrl(gatewayUrl: string): string {
 }
 
 const POLL_INTERVAL_MS = 2000;
-const POLL_MAX_MS = 3 * 60 * 1000;
+const POLL_MAX_MS = 6 * 60 * 1000;
 
 /** 统一 fetch + 超时包装，抛出儿童友好错误。 */
 async function fetchJson(
@@ -66,9 +68,15 @@ async function fetchJson(
   init: RequestInit,
   doFetch: typeof fetch,
   timeoutMs = GATEWAY_IMAGE_FETCH_TIMEOUT_MS,
+  signal?: AbortSignal,
 ): Promise<{ ok: boolean; status: number; body: string; json: unknown }> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const onAbort = () => controller.abort();
+  if (signal) {
+    if (signal.aborted) controller.abort();
+    else signal.addEventListener("abort", onAbort, { once: true });
+  }
   let resp: Response;
   try {
     resp = await doFetch(url, { ...init, signal: controller.signal });
@@ -80,6 +88,7 @@ async function fetchJson(
     );
   } finally {
     clearTimeout(timeout);
+    if (signal) signal.removeEventListener("abort", onAbort);
   }
   const body = await resp.text();
   let json: unknown = {};
@@ -131,20 +140,31 @@ function extractImageFromResult(json: unknown, prompt: string, model: string): D
   throw Object.assign(new Error("画作数据是空的，再试一次吧"), { code: "PROVIDER_ERROR" });
 }
 
-/** 轮询 Right Code 异步任务直到 completed/failed；返回结果 JSON（Images 或 Gemini 形状）。 */
-async function pollTask(baseUrl: string, apiKey: string, taskId: string, doFetch: typeof fetch): Promise<unknown> {
+/** 任务是否画完：接受多种拼写；也用「已带图数据」兜底（供应商不回标准 status 时）。 */
+function pollResultReady(json: unknown): boolean {
+  const s = String((json as { status?: string; state?: string }).status ?? (json as { state?: string }).state ?? "").toLowerCase();
+  if (s === "completed" || s === "complete" || s === "succeeded" || s === "success" || s === "done" || s === "finished") return true;
+  // status 缺失/非标准：只要能取到图就算完成（避免死等到 180s 超时）。
+  const j = json as { data?: ReadonlyArray<{ b64_json?: string; url?: string }>; candidates?: unknown };
+  if (j.data?.[0]?.b64_json?.trim() || j.data?.[0]?.url?.trim() || j.candidates) return true;
+  return false;
+}
+
+/** 轮询 Right Code 异步任务直到完成/失败；返回结果 JSON（Images 或 Gemini 形状）。signal 可中断。 */
+async function pollTask(baseUrl: string, apiKey: string, taskId: string, doFetch: typeof fetch, signal?: AbortSignal): Promise<unknown> {
   const url = buildTaskQueryUrl(baseUrl, taskId);
   const deadline = Date.now() + POLL_MAX_MS;
   while (Date.now() < deadline) {
+    if (signal?.aborted) throw Object.assign(new Error("画画被中断了，我们再试一次吧"), { code: "ABORTED" });
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
-    const { ok, status, body, json } = await fetchJson(url, { method: "GET", headers: { Authorization: `Bearer ${apiKey}` } }, doFetch, 30_000);
+    const { ok, status, body, json } = await fetchJson(url, { method: "GET", headers: { Authorization: `Bearer ${apiKey}` } }, doFetch, 30_000, signal);
     if (!ok) throwProviderError(status, body, json);
-    const s = (json as { status?: string }).status;
-    if (s === "completed") return json;
-    if (s === "failed") {
+    const s = String((json as { status?: string }).status ?? "").toLowerCase();
+    if (s === "failed" || s === "error") {
       const msg = (json as { error?: { message?: string } }).error?.message ?? "画画没成功";
       throw Object.assign(new Error(msg), { code: "PROVIDER_ERROR" });
     }
+    if (pollResultReady(json)) return json;
   }
   throw Object.assign(new Error("画画等太久啦，再试一次吧"), { code: "TIMEOUT" });
 }
@@ -162,8 +182,10 @@ async function generateImageViaDirect(options: {
   width?: number;
   height?: number;
   fetchImpl?: typeof fetch;
+  signal?: AbortSignal;
 }): Promise<DirectImageResult> {
   const doFetch = options.fetchImpl ?? fetch;
+  const signal = options.signal;
   const headers = { "Content-Type": "application/json", Authorization: `Bearer ${options.apiKey}` };
   const root = options.baseUrl.trim().replace(/\/+$/, "");
 
@@ -172,10 +194,10 @@ async function generateImageViaDirect(options: {
     const { ok, status, body, json } = await fetchJson(url, {
       method: "POST", headers,
       body: JSON.stringify({ async: true, contents: [{ role: "user", parts: [{ text: options.prompt }] }] }),
-    }, doFetch);
+    }, doFetch, GATEWAY_IMAGE_FETCH_TIMEOUT_MS, signal);
     if (!ok) throwProviderError(status, body, json);
     const taskId = (json as { task_id?: string }).task_id;
-    const result = taskId ? await pollTask(options.baseUrl, options.apiKey, taskId, doFetch) : json;
+    const result = taskId ? await pollTask(options.baseUrl, options.apiKey, taskId, doFetch, signal) : json;
     return extractImageFromResult(result, options.prompt, options.model);
   }
 
@@ -190,11 +212,11 @@ async function generateImageViaDirect(options: {
   const imageUrl = isAsync ? `${root}/v1/images/generations` : buildOpenAiImageUrl(options.baseUrl);
   const { ok, status, body, json } = await fetchJson(imageUrl, {
     method: "POST", headers, body: JSON.stringify(reqBody),
-  }, doFetch);
+  }, doFetch, GATEWAY_IMAGE_FETCH_TIMEOUT_MS, signal);
   if (!ok) throwProviderError(status, body, json);
 
   const taskId = (json as { task_id?: string }).task_id;
-  const result = taskId ? await pollTask(options.baseUrl, options.apiKey, taskId, doFetch) : json;
+  const result = taskId ? await pollTask(options.baseUrl, options.apiKey, taskId, doFetch, signal) : json;
   return extractImageFromResult(result, options.prompt, options.model);
 }
 
@@ -211,6 +233,7 @@ async function generateImageViaGateway(options: {
   width?: number;
   height?: number;
   fetchImpl?: typeof fetch;
+  signal?: AbortSignal;
 }): Promise<GatewayImageGenerateResponse & { effectiveModelId: string }> {
   const token = await options.getAuthToken();
   if (!token.trim()) {
@@ -222,6 +245,11 @@ async function generateImageViaGateway(options: {
   const url = buildGatewayImageGenerateUrl(options.gatewayUrl);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), GATEWAY_IMAGE_FETCH_TIMEOUT_MS);
+  const onAbort = () => controller.abort();
+  if (options.signal) {
+    if (options.signal.aborted) controller.abort();
+    else options.signal.addEventListener("abort", onAbort, { once: true });
+  }
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -255,6 +283,7 @@ async function generateImageViaGateway(options: {
     );
   } finally {
     clearTimeout(timeout);
+    if (options.signal) options.signal.removeEventListener("abort", onAbort);
   }
 
   const bodyText = await resp.text();
@@ -292,11 +321,6 @@ const MobileImageGenerateParams = Type.Object({
       description: "图片文件名（不含扩展名），仅用于日志和展示，不传则自动生成。",
     }),
   ),
-  modelId: Type.Optional(
-    Type.String({
-      description: "生图模型 id，可选；默认 gpt-image-2。",
-    }),
-  ),
   width: Type.Optional(Type.Number({ description: "图片宽度，默认 1024。" })),
   height: Type.Optional(Type.Number({ description: "图片高度，默认 1024。" })),
 });
@@ -332,11 +356,14 @@ export const mobileImageGenerateToolConfig: MtBotToolConfig<typeof MobileImageGe
     const prompt = wrapChildSafePrompt(params.prompt);
     const imageConfig = mobileContext.imageProviderConfig;
     // 有生图 provider 配置：直连（独立运行模式）；否则回退 gateway（需登录）。
-    const modelId = params.modelId ?? imageConfig?.model ?? DEFAULT_IMAGE_MODEL;
+    // 模型恒由用户配置决定，不接受 LLM 覆盖（否则会画错模型）。
+    const modelId = imageConfig?.model ?? DEFAULT_IMAGE_MODEL;
+    mobileContext.log?.(`[image_generate] provider=${imageConfig?.provider ?? "gateway"} model=${modelId}`);
 
     try {
       // 统一成 { url, width, height, revisedPrompt, effectiveModelId }：direct 已是此形状，
       // gateway 回 base64 需转 data URI。
+      const signal = mobileContext.getAbortSignal?.();
       const data: DirectImageResult = imageConfig
         ? await generateImageViaDirect({
             provider: imageConfig.provider ?? "openai",
@@ -347,6 +374,7 @@ export const mobileImageGenerateToolConfig: MtBotToolConfig<typeof MobileImageGe
             width: params.width,
             height: params.height,
             fetchImpl: mobileContext.fetchImpl,
+            ...(signal ? { signal } : {}),
           })
         : await (async () => {
             const g = await generateImageViaGateway({
@@ -358,6 +386,7 @@ export const mobileImageGenerateToolConfig: MtBotToolConfig<typeof MobileImageGe
               width: params.width,
               height: params.height,
               fetchImpl: mobileContext.fetchImpl,
+              ...(signal ? { signal } : {}),
             });
             return {
               url: `data:${g.mimeType};base64,${g.imageBase64}`,
@@ -388,6 +417,8 @@ export const mobileImageGenerateToolConfig: MtBotToolConfig<typeof MobileImageGe
       };
     } catch (err) {
       const message = err instanceof Error ? err.message : "画画失败了";
+      const code = (err as { code?: string }).code ?? "UNKNOWN";
+      mobileContext.log?.(`[image_generate] 失败 code=${code} model=${modelId} msg=${message}`);
       throw new Error(message);
     }
   },

@@ -182,6 +182,8 @@ export function createMobileBridge(deps: MobileBridgeDeps) {
   let sessionId: string | undefined;
   /** 递增以作废进行中的 TTS 合成（abort / reset / 新一轮发送） */
   let ttsEpoch = 0;
+  /** 当前轮中断控制器：长任务工具（生图/写游戏）监听其 signal，abort/reset/新一轮发送时触发。 */
+  let turnAbort: AbortController | undefined;
 
   // ── 资源复用 / 确认 / 编辑 的会话内状态 ──
   /** RN 同步来的已有创作元信息（供 list_my_creations 复用感知） */
@@ -265,7 +267,7 @@ export function createMobileBridge(deps: MobileBridgeDeps) {
     deps.log?.(`[mobileBridge] 后台生成互动页面 title=${spec.title} type=${spec.type}`);
     void (async () => {
       try {
-        const raw = await sess.generateText(buildPlaygroundPrompt(spec));
+        const raw = await sess.generateText(buildPlaygroundPrompt(spec), turnAbort?.signal);
         const html = stripCodeFence(raw);
         // 生成期间被打断/重开会话 → 丢弃迟到产物，不打扰新语境
         if (epochAtStart !== ttsEpoch || session !== sess) {
@@ -402,6 +404,8 @@ export function createMobileBridge(deps: MobileBridgeDeps) {
         listCreations: () => knownCreations,
         getEditTarget: () => editTarget,
         requestConfirm: (kind, title) => requestConfirm(kind, title),
+        getAbortSignal: () => turnAbort?.signal,
+        ...(deps.log ? { log: deps.log } : {}),
         generatePlayground: (spec) => generatePlaygroundBackground(spec),
         logToolAudit: (row) =>
           deps.log?.(`[tool-audit] ${row.toolName} err=${row.isError} ${row.resultSummary}`),
@@ -488,8 +492,10 @@ export function createMobileBridge(deps: MobileBridgeDeps) {
       deps.emit({ type: "agent_error", payload: { message: childSafeErrorMessage("agent_error") } });
       return;
     }
-    // 新一轮发送作废上一轮未完成的 TTS
+    // 新一轮发送作废上一轮未完成的 TTS，并重置轮级中断控制器（作废上一轮迟到的长任务）。
     invalidatePendingTts();
+    turnAbort?.abort();
+    turnAbort = new AbortController();
     deps.log?.(`[mobileBridge] 用户发送: ${text} gen=${generationId}`);
     // 轮级 TTS 身份：跨本轮所有分段（工具前/后）稳定，供 finalize 置空 currentTurn 后的段回退。
     currentTurnGenerationId = generationId;
@@ -554,6 +560,7 @@ export function createMobileBridge(deps: MobileBridgeDeps) {
           break;
         case "reset_session":
           invalidatePendingTts();
+          turnAbort?.abort();
           finalizeCurrentTurn("abort");
           session?.dispose();
           session = undefined;
@@ -561,6 +568,7 @@ export function createMobileBridge(deps: MobileBridgeDeps) {
           break;
         case "abort":
           invalidatePendingTts();
+          turnAbort?.abort();
           finalizeCurrentTurn("abort");
           // 打断时一并拒绝挂起的确认，避免工具在 30s 超时前一直挂着
           for (const [requestId, resolver] of pendingConfirms) {

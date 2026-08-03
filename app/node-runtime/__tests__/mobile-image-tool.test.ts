@@ -107,7 +107,7 @@ describe("mobile-image-tool", () => {
     await mobileImageGenerateToolConfig.execute("tc1", { prompt: "小狗在草地上跑" }, ctx);
 
     const body = JSON.parse(capturedBody);
-    expect(body.prompt).toContain("age-appropriate illustration");
+    expect(body.prompt).toContain("illustration for a 3-8 year old child");
     expect(body.prompt).toContain("小狗在草地上跑");
   });
 
@@ -115,6 +115,25 @@ describe("mobile-image-tool", () => {
     const ctx = buildContext({ token: "" });
 
     await expect(mobileImageGenerateToolConfig.execute("tc1", { prompt: "小猫" }, ctx)).rejects.toThrow("登录");
+  });
+
+  it("异步任务用非 completed 状态拼写仍能取图（不再死等超时）", async () => {
+    const emitted: MobileNodeEvent[] = [];
+    // POST 返回 task_id；轮询首次返回 status:"success"（非 "completed"）+ 图数据。
+    const seq = [
+      new Response(JSON.stringify({ task_id: "t-1" }), { status: 200 }),
+      new Response(JSON.stringify({ status: "success", data: [{ b64_json: "aW1n" }] }), { status: 200 }),
+    ];
+    let i = 0;
+    const ctx = buildContext({ fetchImpl: vi.fn(async () => seq[Math.min(i++, seq.length - 1)]) as unknown as typeof fetch });
+    (ctx as { imageProviderConfig?: unknown }).imageProviderConfig = {
+      provider: "rightcode", baseUrl: "https://site.test/draw/v1", apiKey: "k", model: "r-image-2",
+    };
+    ctx.emit = (e) => emitted.push(e);
+
+    const result = await mobileImageGenerateToolConfig.execute("tc1", { prompt: "小猫" }, ctx);
+    expect(result.details).toMatchObject({ url: "data:image/png;base64,aW1n" });
+    expect(emitted).toHaveLength(1);
   });
 
   it("Gateway 返回非 200 时抛出错误", async () => {

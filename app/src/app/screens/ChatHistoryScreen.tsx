@@ -6,7 +6,6 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Clipboard,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
   ScrollView,
@@ -15,6 +14,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import Clipboard from "@react-native-clipboard/clipboard";
 import { ChildAvatarIcon, PetAvatarIcon } from "./components/AvatarIcons";
 import { KidsOverlayHeader } from "./components/KidsOverlayHeader";
 import { decodeEventMessage, eventCardLabel, EVENT_MESSAGE_ROLE, toolCardView } from "../../chat/eventMessage";

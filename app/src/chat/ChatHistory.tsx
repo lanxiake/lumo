@@ -12,7 +12,8 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Clipboard, Image, type NativeScrollEvent, type NativeSyntheticEvent, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Image, type NativeScrollEvent, type NativeSyntheticEvent, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import Clipboard from "@react-native-clipboard/clipboard";
 import type { MessageRow } from "../../node-runtime/src/memory/local-session-memory";
 import { decodeEventMessage, eventCardLabel, EVENT_MESSAGE_ROLE, toolCardView } from "./eventMessage";
 import type { ChildSafeScreen, GalleryImage, GameEntry } from "../hooks/useAppActions";

@@ -38,6 +38,10 @@ export interface MobileToolExecutionContext extends ToolExecutionContext {
   imageProviderConfig?: ImageProviderConfig;
   /** HTTP fetch 原始实现（测试注入用） */
   fetchImpl?: typeof fetch;
+  /** 当前轮的中断信号（abort 命令触发）；长任务工具（生图/写游戏）据此可中断。 */
+  getAbortSignal?: () => AbortSignal | undefined;
+  /** 系统日志写入（工具诊断用，如生图失败错误码）；不记敏感原文/密钥。 */
+  log?: (msg: string) => void;
   /** 已有创作元信息（含内置游戏），供 list_my_creations 复用感知 */
   listCreations: () => readonly CreationMeta[];
   /** 当前编辑目标（get_edit_target 读取原始 html），无则 null */
@@ -83,6 +87,10 @@ export interface MobileToolContextDeps {
   ) => Promise<AskUserQuestionContextResult>;
   /** HTTP fetch（缺省用全局 fetch；域名 allowlist 由服务端托管） */
   readonly fetchImpl?: typeof fetch;
+  /** 当前轮中断信号供给（abort 命令触发）；缺省无中断能力 */
+  readonly getAbortSignal?: () => AbortSignal | undefined;
+  /** 系统日志写入（工具诊断用）；缺省不记录 */
+  readonly log?: (msg: string) => void;
   /** 向 RN 发送事件（App Action 工具用） */
   readonly emit: (event: MobileNodeEvent) => void;
   /** 已有创作元信息供给（list_my_creations 用），缺省返回空 */
@@ -146,6 +154,8 @@ export function createMobileToolContext(deps: MobileToolContextDeps): MobileTool
     getDeviceId: () => deps.deviceId !== "unknown" ? deps.deviceId : undefined,
     ...(deps.imageProviderConfig ? { imageProviderConfig: deps.imageProviderConfig } : {}),
     fetchImpl: deps.fetchImpl,
+    ...(deps.getAbortSignal ? { getAbortSignal: deps.getAbortSignal } : {}),
+    ...(deps.log ? { log: deps.log } : {}),
 
     ...(deps.getSkills ? { getSkills: deps.getSkills } : {}),
     ...(deps.askUserQuestion ? { askUserQuestion: deps.askUserQuestion } : {}),

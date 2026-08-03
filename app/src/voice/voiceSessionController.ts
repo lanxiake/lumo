@@ -147,6 +147,20 @@ export function createVoiceSessionController(initial?: Partial<VoiceSessionContr
   let micMuted = false;
   /** 最近一次将播放/已播放的 TTS 文本（用于回声文本过滤） */
   let lastTtsText = "";
+  /**
+   * 最近若干条 TTS 文本（用于回声文本过滤）。多条 agent_final 快速连发时
+   * lastTtsText 会被后来者覆盖，但 TTS 音频是排队顺序播放的——扬声器此刻可能仍在
+   * 播放较早那条，回声 partial 匹配的是旧文本。故保留一个环形缓冲，逐条比对。
+   */
+  const recentTtsTexts: string[] = [];
+  const RECENT_TTS_MAX = 5;
+  /** 逐条比对回声：任一近期 TTS 文本命中即视为回声 */
+  function matchesRecentTtsEcho(stt: string, profile: "barge" | "final"): boolean {
+    return recentTtsTexts.some((t) => looksLikeTtsEcho(stt, t, { profile }));
+  }
+  function clearRecentTts(): void {
+    recentTtsTexts.length = 0;
+  }
   /** 本次 TTS play_start 时间戳 */
   let playStartedAt = 0;
   /**
@@ -210,7 +224,12 @@ export function createVoiceSessionController(initial?: Partial<VoiceSessionContr
 
   /** 记录即将播放的 TTS 文本（agent_final 时由 App 注入） */
   function setLastTtsText(text: string): void {
-    lastTtsText = text.trim();
+    const trimmed = text.trim();
+    lastTtsText = trimmed;
+    if (trimmed) {
+      recentTtsTexts.push(trimmed);
+      if (recentTtsTexts.length > RECENT_TTS_MAX) recentTtsTexts.shift();
+    }
   }
 
   /** 递增 generation，使旧 TTS 失效 */
@@ -318,6 +337,7 @@ export function createVoiceSessionController(initial?: Partial<VoiceSessionContr
     // 其他打断（按钮/新发言/切模式）清空，避免误伤后续真实输入。
     if (reason !== "barge_in") {
       lastTtsText = "";
+      clearRecentTts();
     }
     lastInterruptTime = now();
     const effects: VoiceEffect[] = [
@@ -499,7 +519,7 @@ export function createVoiceSessionController(initial?: Partial<VoiceSessionContr
       log(`[barge] partial 拒:垃圾识别 字="${trimmed}"`);
       return { effects: [] };
     }
-    if (lastTtsText && looksLikeTtsEcho(trimmed, lastTtsText, { profile: "barge" })) {
+    if (matchesRecentTtsEcho(trimmed, "barge")) {
       clearBargeArm();
       log(`[barge] partial 拒:回声 字="${trimmed}"`);
       return { effects: [] };
@@ -566,7 +586,7 @@ export function createVoiceSessionController(initial?: Partial<VoiceSessionContr
     }
 
     // TTS 回声（含叠字）：不打断、不发消息。partial 漏判打断后，final 仍可能是回声整句。
-    if (mode === "phone_call" && lastTtsText && looksLikeTtsEcho(trimmed, lastTtsText, { profile: "final" })) {
+    if (mode === "phone_call" && matchesRecentTtsEcho(trimmed, "final")) {
       speechStartedAt = 0;
       bargeInTriggeredForUtterance = false;
       clearBargeArm();

@@ -982,6 +982,9 @@ function MainApp(props: MainAppProps): React.JSX.Element {
   const onSend = () => {
     if (!handleTextSend(input)) return;
     setInput("");
+    // adjustNothing 下 keyboardDidHide 触发不稳，发送后主动收键盘并兜底复位，避免 HUD 卡在键盘高度下不来。
+    Keyboard.dismiss();
+    setKeyboardHeight(0);
   };
 
   const { hudPaddingH, fontScale } = metrics;
@@ -1002,6 +1005,38 @@ function MainApp(props: MainAppProps): React.JSX.Element {
       : state === "tts_converting"
         ? "准备说话…"
         : null;
+
+  // [RENDER-DEBUG] 无限渲染排查：统计渲染次数 + 每帧哪些追踪值引用变了。
+  // 短窗内渲染暴涨即命中循环，变化列表指出触发源。排查完删除。
+  const renderCountRef = useRef(0);
+  const renderWindowRef = useRef({ at: Date.now(), count: 0 });
+  const prevTrackedRef = useRef<Record<string, unknown>>({});
+  {
+    renderCountRef.current += 1;
+    const tracked: Record<string, unknown> = {
+      lastEvent, messages, appState, appActions, state, input, activeToolLabel,
+      confirmCard, editTarget, keyboardHeight, duplexEnabled, dockHistory,
+      childProfile, providerConfig, imageProviderConfig, sysLogs, metrics,
+      tagParser, gameHistory: appState.gameHistory, galleryImages: appState.galleryImages,
+    };
+    const changed: string[] = [];
+    for (const k of Object.keys(tracked)) {
+      if (prevTrackedRef.current[k] !== tracked[k]) changed.push(k);
+    }
+    prevTrackedRef.current = tracked;
+    const w = renderWindowRef.current;
+    w.count += 1;
+    const dt = Date.now() - w.at;
+    if (dt >= 1000) {
+      const msg = `[RENDER-DEBUG] ${w.count} renders/${dt}ms total=${renderCountRef.current} changed=[${changed.join(",")}]`;
+      console.log(msg);
+      clientLog(msg);
+      w.at = Date.now();
+      w.count = 0;
+    } else if (renderCountRef.current <= 30 || renderCountRef.current % 20 === 0) {
+      console.log(`[RENDER-DEBUG] #${renderCountRef.current} changed=[${changed.join(",")}]`);
+    }
+  }
 
   return (
     <>
