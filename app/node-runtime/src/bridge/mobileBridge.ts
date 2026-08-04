@@ -21,7 +21,7 @@ import { createMobileStreamFnFactory } from "../host/mobile-stream-fn-factory.js
 import { createMobileToolContext } from "../host/mobile-tool-context.js";
 import { childSafeErrorMessage } from "../safety/child-safe-response.js";
 import { createMobileTts, type MobileTts } from "../host/mobile-tts.js";
-import { checkPlaygroundHtmlSafety, wrapPlaygroundHtml } from "../tools/playground-html.js";
+import { checkPlaygroundHtmlSafety, extractHtmlBlock, validatePlaygroundContent, wrapPlaygroundHtml } from "../tools/playground-html.js";
 import type { SystemLogBuffer } from "../perf/system-logs.js";
 
 /** bridge 的宿主环境依赖（安全存储 / 网关 / 平台信息，由 index.ts 注入） */
@@ -184,6 +184,15 @@ export function createMobileBridge(deps: MobileBridgeDeps) {
   let ttsEpoch = 0;
   /** 当前轮中断控制器：长任务工具（生图/写游戏）监听其 signal，abort/reset/新一轮发送时触发。 */
   let turnAbort: AbortController | undefined;
+  /**
+   * 后台建游戏专用中断控制器：生命周期 = 会话，仅在 reset_session/dispose 时中断。
+   * 不随「新一轮发送/打断（含回声误打断）」作废——建游戏一次要几十秒到几分钟，
+   * 期间小主人必然会继续说话或被自身 TTS 回声误触发打断，若绑到 turnAbort/ttsEpoch
+   * 会几乎必然被丢弃，表现为「说了要做但游戏永远不出现」。
+   */
+  let bgGenAbort: AbortController | undefined;
+  /** 正在后台生成中的游戏标题（供 list_my_creations 回报真实进度）；无则 null */
+  let pendingPlaygroundTitle: string | null = null;
 
   // ── 资源复用 / 确认 / 编辑 的会话内状态 ──
   /** RN 同步来的已有创作元信息（供 list_my_creations 复用感知） */
@@ -234,23 +243,11 @@ export function createMobileBridge(deps: MobileBridgeDeps) {
     });
   }
 
-  /** 构造后台生成互动页面 HTML 的提示词（约束自包含 + 儿童安全，对齐 checkPlaygroundHtmlSafety）。 */
+  /** 构造后台生成互动页面 HTML 的提示词。格式/安全约束由 playground-builder 子 Agent 的 system prompt 承载，这里只给内容。 */
   function buildPlaygroundPrompt(spec: { type: string; title: string; description: string }): string {
-    return [
-      `请为 3-8 岁儿童生成一个可在沙箱 WebView 里运行的"${spec.title}"（类型：${spec.type}）。`,
-      `玩法/内容：${spec.description}`,
-      "硬性要求：",
-      "1. 只输出完整、自包含的 HTML，内联全部 CSS/JS，不要任何解释文字、不要 markdown 代码围栏。",
-      "2. 禁止外部资源与网络：不得出现 http(s):// 外链、fetch、XMLHttpRequest、WebSocket、eval。",
-      "3. 按钮大、色彩鲜明、适合手指点按，无文字阅读门槛；总大小控制在 50KB 以内。",
-      "4. 直接以 <!doctype html> 或 <div>/<html> 开头。",
-    ].join("\n");
+    return `标题：${spec.title}\n类型：${spec.type}\n玩法/内容：${spec.description}`;
   }
 
-  /** 去除模型可能包裹的 markdown 代码围栏 */
-  function stripCodeFence(s: string): string {
-    return s.replace(/^\s*```(?:html)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
-  }
 
   /**
    * 后台异步生成互动页面：不阻塞主对话轮。生成完成后 emit playground_open 打开游戏，
@@ -260,23 +257,54 @@ export function createMobileBridge(deps: MobileBridgeDeps) {
     type: "game" | "effect" | "interactive";
     title: string;
     description: string;
+    toolCallId?: string;
   }): void {
     const sess = session;
     if (!sess) return;
-    const epochAtStart = ttsEpoch;
+    // 生成结束后补发工具终态卡片（对应本轮立即返回的 status:"generating"，
+    // event-sink 已跳过其 tool_finished，改由这里按 toolCallId 落终态）。
+    const finishTool = (ok: boolean) => {
+      if (pendingPlaygroundTitle === spec.title) pendingPlaygroundTitle = null;
+      if (!spec.toolCallId) return;
+      emitEvent({
+        type: "tool_finished",
+        payload: { toolName: "create_web_playground", toolCallId: spec.toolCallId, ok },
+      });
+    };
+    pendingPlaygroundTitle = spec.title;
+    bgGenAbort ??= new AbortController();
+    const abortAtStart = bgGenAbort;
     deps.log?.(`[mobileBridge] 后台生成互动页面 title=${spec.title} type=${spec.type}`);
+    const isStale = () => session !== sess || abortAtStart.signal.aborted;
     void (async () => {
       try {
-        const raw = await sess.generateText(buildPlaygroundPrompt(spec), turnAbort?.signal);
-        const html = stripCodeFence(raw);
-        // 生成期间被打断/重开会话 → 丢弃迟到产物，不打扰新语境
-        if (epochAtStart !== ttsEpoch || session !== sess) {
-          deps.log?.(`[mobileBridge] 丢弃过期的后台生成 title=${spec.title}`);
-          return;
+        const prompt = buildPlaygroundPrompt(spec);
+        let html = "";
+        let lastReason = "empty";
+        // 工程化校验：安全 + 内容非空/有结构/有交互。不合格重试一次（子 Agent 单轮，偶发空壳）。
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          const raw = await sess.generateText(prompt, abortAtStart.signal);
+          if (isStale()) {
+            deps.log?.(`[mobileBridge] 丢弃过期的后台生成 title=${spec.title}`);
+            finishTool(false);
+            return;
+          }
+          deps.log?.(`[mobileBridge] 生成原文 title=${spec.title} len=${raw.length} head=${JSON.stringify(raw.slice(0, 120))}`);
+          const candidate = extractHtmlBlock(raw);
+          const safety = checkPlaygroundHtmlSafety(candidate);
+          const content = validatePlaygroundContent(candidate);
+          if (safety.safe && content.valid) {
+            html = candidate;
+            break;
+          }
+          lastReason = !safety.safe ? (safety.reason ?? "unsafe") : (content.reason ?? "invalid");
+          deps.log?.(`[mobileBridge] 生成校验未过(第${attempt + 1}次) title=${spec.title}: ${lastReason}`);
         }
-        const safety = checkPlaygroundHtmlSafety(html);
-        if (!safety.safe || !html) {
-          deps.log?.(`[mobileBridge] 后台生成不安全/为空 title=${spec.title}: ${safety.reason ?? "empty"}`);
+        if (!html) {
+          deps.log?.(`[mobileBridge] 后台生成最终失败 title=${spec.title}: ${lastReason}`);
+          finishTool(false);
+          // 直接给用户可见提示：不单靠主 Agent 二次生成（那条可能被 abort/不触发 TTS，表现为「没反馈」）。
+          emitEvent({ type: "show_toast", payload: { text: `《${spec.title}》没做成功，待会儿再试试~`, style: "hint" } });
           void handleCommand({
             type: "send_user_message",
             payload: { text: `（系统提示）刚才想做的《${spec.title}》没做成功，请用一句温柔的话告诉小主人待会儿再试试，然后换个话题继续陪 TA 聊。`, sessionId: sessionId ?? "" },
@@ -284,6 +312,7 @@ export function createMobileBridge(deps: MobileBridgeDeps) {
           return;
         }
         emitEvent({ type: "playground_open", payload: { type: spec.type, title: spec.title, html: wrapPlaygroundHtml(html) } });
+        finishTool(true);
         void handleCommand({
           type: "send_user_message",
           payload: { text: `（系统提示）《${spec.title}》已经做好并打开了，请用一句开心的话告诉小主人可以开始玩了。`, sessionId: sessionId ?? "" },
@@ -291,7 +320,9 @@ export function createMobileBridge(deps: MobileBridgeDeps) {
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         deps.log?.(`[mobileBridge] 后台生成失败 title=${spec.title}: ${message}`);
-        if (epochAtStart !== ttsEpoch || session !== sess) return;
+        finishTool(false);
+        if (session !== sess || abortAtStart.signal.aborted) return;
+        emitEvent({ type: "show_toast", payload: { text: `《${spec.title}》没做成功，待会儿再试试~`, style: "hint" } });
         void handleCommand({
           type: "send_user_message",
           payload: { text: `（系统提示）刚才想做的《${spec.title}》没做成功，请用一句温柔的话告诉小主人待会儿再试试。`, sessionId: sessionId ?? "" },
@@ -382,6 +413,8 @@ export function createMobileBridge(deps: MobileBridgeDeps) {
     session?.dispose();
     session = undefined;
     sessionId = undefined;
+    bgGenAbort?.abort();
+    bgGenAbort = undefined;
 
     const newSessionId = `sess-${Date.now()}`;
     const gatewayUrl = resolveGatewayUrl();
@@ -403,6 +436,7 @@ export function createMobileBridge(deps: MobileBridgeDeps) {
         emit: emitEvent,
         listCreations: () => knownCreations,
         getEditTarget: () => editTarget,
+        getPendingPlayground: () => pendingPlaygroundTitle,
         requestConfirm: (kind, title) => requestConfirm(kind, title),
         getAbortSignal: () => turnAbort?.signal,
         ...(deps.log ? { log: deps.log } : {}),
@@ -529,12 +563,15 @@ export function createMobileBridge(deps: MobileBridgeDeps) {
     // 设置编辑目标（get_edit_target 读取原 html）与就地替换 id（下一轮 playground_open 用）。
     editTarget = { gameId: payload.gameId, title: payload.title, html: payload.html };
     editReplaceId = payload.gameId;
-    deps.log?.(`[mobileBridge] 编辑游戏 gameId=${payload.gameId} 指令=${payload.instruction}`);
-    // 以用户消息形式投喂修改指令；Agent 会先 get_edit_target 看原码，再生成改好版本。
-    await handleSendUserMessage(
-      `我想把《${payload.title}》这个小游戏改一改：${payload.instruction}`,
-      payload.generationId ?? 0,
-    );
+    const instruction = payload.instruction.trim();
+    deps.log?.(`[mobileBridge] 编辑游戏 gameId=${payload.gameId} 指令=${instruction || "(询问模式)"}`);
+    // 空指令 = 小朋友点了「改一改」但还没说怎么改（打字对小朋友太难）：
+    // 让宠物主动开口问，小朋友直接语音回答；editTarget 已就位，下一轮 Agent 会
+    // get_edit_target 看原码后就地改。非空指令 = 直接投喂修改要求。
+    const message = instruction
+      ? `我想把《${payload.title}》这个小游戏改一改：${instruction}`
+      : `（系统提示）小主人点了《${payload.title}》的「改一改」但还没说怎么改。请用一句亲切的话主动问 TA 想把这个游戏改成什么样（比如换颜色、加角色、变难变简单），等 TA 说了再动手改。现在先别调用工具。`;
+    await handleSendUserMessage(message, payload.generationId ?? 0);
   }
 
   async function handleClosePlayground(payload: Extract<MobileNodeCommand, { type: "close_playground" }>["payload"]) {
@@ -561,6 +598,8 @@ export function createMobileBridge(deps: MobileBridgeDeps) {
         case "reset_session":
           invalidatePendingTts();
           turnAbort?.abort();
+          bgGenAbort?.abort();
+          bgGenAbort = undefined;
           finalizeCurrentTurn("abort");
           session?.dispose();
           session = undefined;

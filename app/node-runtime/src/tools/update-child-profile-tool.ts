@@ -6,7 +6,7 @@
  * 完成（emit profile_update）。仅存非敏感偏好特征——不收住址/电话/证件等隐私。
  */
 
-import { Type, type Static } from "@sinclair/typebox";
+import { Type, type Static } from "typebox";
 import type { MtBotToolConfig, AgentToolResult, ToolExecutionContext } from "@lumo/agent-runtime";
 import type { MobileToolExecutionContext } from "../host/mobile-tool-context.js";
 import type { ChildProfile, MobileNodeEvent } from "../bridge/schema.js";

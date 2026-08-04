@@ -21,11 +21,11 @@
   "packageManager": "pnpm@9.0.0",
   "pnpm": {
     "overrides": {
-      "@mariozechner/pi-ai": "0.50.7",
-      "@mariozechner/pi-agent-core": "0.50.7"
+      "@mariozechner/pi-ai": "0.73.1",
+      "@mariozechner/pi-agent-core": "0.73.1"
     },
     "patchedDependencies": {
-      "@mariozechner/pi-ai@0.50.7": "patches/@mariozechner__pi-ai@0.50.7.patch"
+      "@mariozechner/pi-ai@0.73.1": "patches/@mariozechner__pi-ai@0.73.1.patch"
     }
   }
 }

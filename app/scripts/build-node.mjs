@@ -35,6 +35,8 @@ const OUT = path.join(APP_DIR, "nodejs-assets", "nodejs-project", "main.js");
 const QUICKJS_STUB = path.join(__dirname, "stubs", "quickjs-stub.mjs");
 const PROXY_STUB = path.join(__dirname, "stubs", "proxy-agent-stub.mjs");
 const AXIOS_STUB = path.join(__dirname, "stubs", "axios-stub.mjs");
+const OTEL_API_STUB = path.join(__dirname, "stubs", "otel-api-stub.mjs");
+const EMPTY_PROVIDER_STUB = path.join(__dirname, "stubs", "empty-provider-stub.mjs");
 
 const cliArgs = process.argv.slice(2);
 const watch = cliArgs.includes("--watch");
@@ -168,10 +170,70 @@ const options = {
     // msedge-tts 仅 getVoices 用 axios（本端不调），其 fetch adapter 含 Node20+
     // ReadableStream 死代码，stub 掉彻底挡在 bundle 外（合成走 ws，零功能损失）。
     axios: AXIOS_STUB,
+    // @mistralai/mistralai(pi-ai 传递依赖)的 observability 顶层 import 未安装的
+    // @opentelemetry/api → esbuild 无法解析。Lumo 从不调 Mistral，其 tracing 永不执行，
+    // 桩为 NoOp 使 bundle 可解析（零功能损失）。
+    "@opentelemetry/api": OTEL_API_STUB,
+    // Lumo 只用 openai-completions(deepseek)，pi-ai 的其它 provider SDK 用不到。
+    // 这些 SDK 顶层求值在 nodejs-mobile Node18 崩溃(升级后启动即崩根因)，全 stub。
+    "@mistralai/mistralai": EMPTY_PROVIDER_STUB,
+    "@google/genai": EMPTY_PROVIDER_STUB,
+    "@anthropic-ai/sdk": EMPTY_PROVIDER_STUB,
   },
   // node-runtime 是 ESM(.js 后缀 import 指向 .ts)，esbuild 按扩展解析即可，
   // 但 NodeNext 的 .js→.ts 需要 resolveExtensions 兜底。
   resolveExtensions: [".ts", ".tsx", ".mjs", ".js", ".json"],
+  // pi-ai 的 models.generated.js 是相对 import（./models.generated.js），alias 只匹配
+  // 裸包名故无效，用 onResolve 插件把它重定向到空表 stub（根除 553KB 巨型字面量 SIGSEGV）。
+  plugins: [
+    {
+      // typebox@1.3.10 多个文件用 Unicode 属性转义正则字面量（\p{L} \p{N} \p{Mn}
+      // \p{Script=Han} \p{ID_Start} ...）。nodejs-mobile 的 Node18 V8 在【编译源码时的
+      // 正则字面量预校验】拒绝字符类内/带脚本名的 \p 属性转义 → 整个 main.js 编译期抛
+      // SyntaxError → nodejs-mobile 原生层 SIGSEGV（banner 首行都没执行 = 升级即崩根因，
+      // dumpsys exit-info 实测 reason=2 SIGNALED；wrapper require 抓到精确报错行）。
+      //
+      // 两类处理：
+      //  1) guard/emit.mjs 的 identifierRegExp 是【活代码】(IsIdentifier 决定 schema 校验
+      //     器用 .prop 还是 ["prop"] 访问)，Lumo schema 字段名全 ASCII，替换为等价 ASCII
+      //     正则（功能正确）。
+      //  2) format/idn_email.mjs、format/_idna.mjs 的 \p 正则用于 IDN 邮箱/域名校验，是
+      //     【死代码】(Lumo 从不用 Type.String({format:'idn-*'})，且实测该 V8 运行时对 \p
+      //     匹配本就是坏的)。把这些正则字面量整体转成 new RegExp(...) —— 绕过编译期字面量
+      //     预校验（运行时构造不触发），使 main.js 可编译；IDN 校验功能降级但无人调用。
+      name: "fix-typebox-unicode-regex",
+      setup(pluginBuild) {
+        // emit.mjs：ASCII 等价替换（活代码，保证功能正确）
+        pluginBuild.onLoad({ filter: /typebox[\\/]build[\\/]guard[\\/]emit\.mjs$/ }, (args) => {
+          const src = readFileSync(args.path, "utf8");
+          // identifierRegExp（顶层）→ ASCII 标识符正则
+          let patched = src.replace(
+            /const identifierRegExp = \/\^\[\\p\{ID_Start\}_\$\]\[\\p\{ID_Continue\}_\$\\u200C\\u200D\]\*\$\/u;/,
+            "const identifierRegExp = /^[A-Za-z_$][A-Za-z0-9_$\\u200C\\u200D]*$/;",
+          );
+          if (patched === src) {
+            throw new Error("[build-node] typebox emit.mjs identifierRegExp 未匹配，patch 失效，请检查 typebox 版本");
+          }
+          return { contents: patched, loader: "js" };
+        });
+        // idn_email.mjs / _idna.mjs：桩为无 \p 的最小实现。
+        // 实测该 V8 完全不支持 \p 属性转义（连 new RegExp 运行时构造都抛/匹配失效，
+        // 见插件注释），故正则转换无用，只能移除 \p 语义。这些是 IDN 邮箱/域名校验死代码
+        // （Lumo 从不用 Type.String({format:'idn-*'})），桩为宽松放行零功能损失。
+        pluginBuild.onLoad({ filter: /typebox[\\/]build[\\/]format[\\/]idn_email\.mjs$/ }, () => ({
+          contents: `export function IsIdnEmail(value) { return typeof value === "string" && value.includes("@"); }`,
+          loader: "js",
+        }));
+        pluginBuild.onLoad({ filter: /typebox[\\/]build[\\/]format[\\/]_idna\.mjs$/ }, () => ({
+          // 保留 IsIdnLabel/IsLabel 导出签名（被 idn_hostname/hostname 引用）；宽松放行。
+          contents:
+            `export function IsIdnLabel(value) { return typeof value === "string" && value.length > 0 && value.length <= 63; }\n` +
+            `export function IsLabel(value) { return typeof value === "string" && value.length > 0 && value.length <= 63; }`,
+          loader: "js",
+        }));
+      },
+    },
+  ],
   logLevel: "info",
   metafile: false,
   // 不用 inline sourcemap：设备内存紧张(nodejs-mobile + WebView + Node 三者叠加)，
@@ -200,7 +262,11 @@ const options = {
     js:
       `// [kids-mobile] node-runtime bundle — 由 scripts/build-node.mjs 生成，勿手改。\n` +
       `try{if(typeof globalThis.File==="undefined"){globalThis.File=require("node:buffer").File;}}catch(_){}` +
-      `try{if(typeof globalThis.crypto==="undefined"){globalThis.crypto=require("node:crypto").webcrypto;}}catch(_){}`,
+      `try{if(typeof globalThis.crypto==="undefined"){globalThis.crypto=require("node:crypto").webcrypto;}}catch(_){}` +
+      // Node18 的 Web Streams 在 node:stream/web，但未挂 globalThis；undici/web-streams-polyfill
+      // 顶层可能触碰 globalThis.ReadableStream 等 → 加载即崩(同 File/crypto 根因)。补齐。
+      `try{var __sw=require("node:stream/web");["ReadableStream","WritableStream","TransformStream","ByteLengthQueuingStrategy","CountQueuingStrategy"].forEach(function(k){if(typeof globalThis[k]==="undefined"&&__sw[k]){globalThis[k]=__sw[k];}});}catch(_){}` +
+      `try{if(typeof globalThis.Blob==="undefined"){globalThis.Blob=require("node:buffer").Blob;}}catch(_){}`,
   },
 };
 

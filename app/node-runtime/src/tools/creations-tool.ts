@@ -7,7 +7,7 @@
  *  - get_edit_target：编辑态下取当前游戏的原始 HTML，供 Agent 在其上修改。
  */
 
-import { Type, type Static } from "@sinclair/typebox";
+import { Type, type Static } from "typebox";
 import type { MtBotToolConfig, AgentToolResult, ToolExecutionContext } from "@lumo/agent-runtime";
 import type { MobileToolExecutionContext } from "../host/mobile-tool-context.js";
 import { BUILTIN_GAME_META } from "../config/builtin-games.js";
@@ -15,11 +15,14 @@ import { BUILTIN_GAME_META } from "../config/builtin-games.js";
 // ── list_my_creations ────────────────────────────────────────────────────
 
 const NoParams = Type.Object({});
+type NoParamsInput = Static<typeof NoParams>;
 
 interface CreationsListResult {
   images: { id: string; title: string; prompt?: string }[];
   games: { id: string; title: string }[];
   builtinGames: { id: string; title: string; ageRange: readonly [number, number] }[];
+  /** 正在后台生成中的游戏标题（孩子问进度时据此如实回答，别瞎猜） */
+  generatingGame?: string;
 }
 
 export const listMyCreationsToolConfig: MtBotToolConfig<typeof NoParams> = {
@@ -28,24 +31,28 @@ export const listMyCreationsToolConfig: MtBotToolConfig<typeof NoParams> = {
   description:
     "列出小主人已经画过的画、玩过/做过的游戏，以及可直接推荐的内置精品游戏。" +
     "在打算画新画或做新游戏之前，先调用这个看看有没有可以直接复用或稍作修改的，" +
-    "避免重复生成。孩子想'再玩上次那个'时，也用这个找到对应游戏。",
+    "避免重复生成。孩子想'再玩上次那个'时，也用这个找到对应游戏。" +
+    "孩子问'游戏做好了吗/怎么样了'时，也用这个查真实进度：返回的 generatingGame 非空表示那个游戏还在做，" +
+    "要如实说'还在做，马上好'；若该游戏已出现在 games 列表里则说做好了可以打开。",
   parameters: NoParams,
   category: "channel",
   isReadOnly: true,
   needsPermission: false,
   execute: async (
     _toolCallId: string,
-    _params: Record<string, never>,
+    _params: NoParamsInput,
     context: ToolExecutionContext,
   ): Promise<AgentToolResult<CreationsListResult>> => {
     const ctx = context as MobileToolExecutionContext;
     const creations = ctx.listCreations();
+    const generating = ctx.getPendingPlayground?.() ?? null;
     const result: CreationsListResult = {
       images: creations
         .filter((c) => c.kind === "image")
         .map((c) => ({ id: c.id, title: c.title, ...(c.prompt ? { prompt: c.prompt } : {}) })),
       games: creations.filter((c) => c.kind === "game").map((c) => ({ id: c.id, title: c.title })),
       builtinGames: BUILTIN_GAME_META.map((g) => ({ id: g.id, title: g.title, ageRange: g.ageRange })),
+      ...(generating ? { generatingGame: generating } : {}),
     };
     return {
       content: [{ type: "text", text: JSON.stringify(result) }],
@@ -124,7 +131,7 @@ export const getEditTargetToolConfig: MtBotToolConfig<typeof NoParams> = {
   needsPermission: false,
   execute: async (
     _toolCallId: string,
-    _params: Record<string, never>,
+    _params: NoParamsInput,
     context: ToolExecutionContext,
   ): Promise<AgentToolResult<EditTargetResult>> => {
     const ctx = context as MobileToolExecutionContext;

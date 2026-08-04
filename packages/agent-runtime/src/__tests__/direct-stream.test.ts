@@ -115,6 +115,30 @@ describe("createDirectStreamFn", () => {
     expect(passed.api).toBe("openai-completions");
   });
 
+  it("DeepSeek 端点：标记 thinkingFormat=deepseek + reasoning=true，并清掉 options.reasoning（→ 发 thinking:disabled 关思考）", () => {
+    const impl = vi.fn(() => ({}) as never);
+    const fn = createDirectStreamFn({ credentials: { baseUrl: "https://kms.example.cn/v1" }, streamImpl: impl });
+
+    fn(fakeModel({ id: "deepseek-v4-flash" }), fakeContext, { reasoning: "high" } as never);
+
+    const passedModel = impl.mock.calls[0][0] as Record<string, unknown>;
+    const passedOpts = impl.mock.calls[0][2] as Record<string, unknown>;
+    expect((passedModel.compat as { thinkingFormat?: string }).thinkingFormat).toBe("deepseek");
+    expect(passedModel.reasoning).toBe(true);
+    expect(passedOpts.reasoning).toBeUndefined();
+  });
+
+  it("非 DeepSeek（本地 llama）：不注入 deepseek compat，reasoning 不被强改", () => {
+    const impl = vi.fn(() => ({}) as never);
+    const fn = createDirectStreamFn({ credentials: { baseUrl: "http://localhost:11434/v1" }, streamImpl: impl });
+
+    fn(fakeModel({ id: "llama3", reasoning: false }), fakeContext, undefined);
+
+    const passedModel = impl.mock.calls[0][0] as Record<string, unknown>;
+    expect(passedModel.compat).toBeUndefined();
+    expect(passedModel.reasoning).toBe(false);
+  });
+
   it("透传调用方 options（signal/temperature）", () => {
     const impl = vi.fn(() => ({}) as never);
     const fn = createDirectStreamFn({ credentials: {}, streamImpl: impl });

@@ -2,7 +2,7 @@
  * Glob Tool — 文件模式匹配查找
  */
 
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import type { MtBotToolConfig } from "../tool-adapter.js";
 
 const GlobInput = Type.Object({

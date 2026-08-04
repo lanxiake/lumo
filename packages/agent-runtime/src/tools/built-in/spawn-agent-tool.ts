@@ -4,7 +4,7 @@
  * 支持 sync（阻塞等待完成）和 async（后台运行）两种模式。
  */
 
-import { Type, type Static } from "@sinclair/typebox";
+import { Type, type Static } from "typebox";
 import type { MtBotToolConfig } from "../../tools/tool-adapter.js";
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
 

@@ -6,7 +6,7 @@
  * 三个工具，通过 ToolExecutionContext.emit 将事件发回 RN。
  */
 
-import { Type, type Static } from "@sinclair/typebox";
+import { Type, type Static } from "typebox";
 import type { MtBotToolConfig, AgentToolResult, ToolExecutionContext } from "@lumo/agent-runtime";
 import type { MobileToolExecutionContext } from "../host/mobile-tool-context.js";
 import type { MobileNodeEvent } from "../bridge/schema.js";

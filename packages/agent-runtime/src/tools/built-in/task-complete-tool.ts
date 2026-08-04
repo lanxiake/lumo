@@ -5,7 +5,7 @@
  * 只有 Agent 主动调用此工具，才视为任务真正完成。
  */
 
-import { Type, type Static } from "@sinclair/typebox";
+import { Type, type Static } from "typebox";
 import type { MtBotToolConfig } from "../../tools/tool-adapter.js";
 import type { AgentToolResult, ToolExecutionContext } from "../../types/tool.js";
 

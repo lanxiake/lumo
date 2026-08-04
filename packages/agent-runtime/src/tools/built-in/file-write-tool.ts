@@ -9,7 +9,7 @@
  * 所有写入后都做回读验证,确保写入成功(防 Windows 文件锁/杀软静默失败)。
  */
 
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import type { MtBotToolConfig } from "../tool-adapter.js";
 import { resolveAgentFilePath } from "../resolve-file-path.js";
 

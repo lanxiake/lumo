@@ -4,7 +4,7 @@
  * 统一的 todo_write 工具，合并 create/update/list/delete 操作。
  */
 
-import { Type, type Static } from "@sinclair/typebox";
+import { Type, type Static } from "typebox";
 import type { MtBotToolConfig } from "../../tools/tool-adapter.js";
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
 

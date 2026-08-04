@@ -11,7 +11,7 @@
  * SkillInfo.location 存储 SKILL.md 完整路径，skillDir = dirname(location)。
  */
 
-import { Type, type Static } from "@sinclair/typebox";
+import { Type, type Static } from "typebox";
 import type { MtBotToolConfig } from "../tool-adapter.js";
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
 import type { SkillInfo } from "../../prompt/system-prompt-builder.js";

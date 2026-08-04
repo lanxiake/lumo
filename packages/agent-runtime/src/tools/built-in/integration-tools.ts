@@ -6,7 +6,7 @@
  * These are stub configs. Platform integration (Electron bridge) overrides execute.
  */
 
-import { Type, type Static } from "@sinclair/typebox";
+import { Type, type Static } from "typebox";
 import type { MtBotToolConfig } from "../tool-adapter.js";
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
 

@@ -6,7 +6,7 @@
  * stub 实现，由平台集成层（bridge.ts）注入 gateway callGateway 后覆盖 execute。
  */
 
-import { Type, type Static } from "@sinclair/typebox";
+import { Type, type Static } from "typebox";
 import type { MtBotToolConfig } from "../tool-adapter.js";
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
 

@@ -40,6 +40,7 @@ function fakeContext(sink: MobileNodeEvent[]): MobileToolExecutionContext {
     getDeviceId: () => "dev1",
     listCreations: () => [],
     getEditTarget: () => null,
+    getPendingPlayground: () => null,
     requestConfirm: async () => true,
   } as MobileToolExecutionContext;
 }

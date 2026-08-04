@@ -12,7 +12,7 @@
  * - 循环检测: 连续重复读同一文件渐进阻断（warn → block）
  */
 
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import { statSync, openSync, readSync, closeSync } from "node:fs";
 import type { MtBotToolConfig } from "../tool-adapter.js";
 import { getFileStateCache } from "../file-state-cache.js";

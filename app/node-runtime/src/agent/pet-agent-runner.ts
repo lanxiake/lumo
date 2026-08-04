@@ -26,8 +26,8 @@ import {
   type AssembleAgentRuntime,
 } from "@lumo/agent-runtime";
 import type { StreamFn } from "@mariozechner/pi-agent-core";
-import type { Context } from "@mariozechner/pi-ai";
-import { loadPetAgentDefinition } from "./pet-agent-loader.js";
+import { loadPetAgentDefinition, hardenForMobile } from "./pet-agent-loader.js";
+import { PLAYGROUND_AGENT_DEF } from "./playground-agent-def.js";
 import { createMobileSummaryGenerator } from "./mobile-summary-generator.js";
 import { buildMobileToolRegistry } from "../tools/mobile-tool-registry.js";
 import { checkInputSafety, type SafetyCheckResult } from "../safety/input-safety.js";
@@ -154,6 +154,41 @@ export async function createPetSession(deps: PetSessionDeps): Promise<PetSession
   const assembledPrompt = (res as { prompt?: AssembledSystemPrompt }).prompt;
   const promptHandle = asMobilePromptHandle(deps.promptContext);
 
+  // 后台 HTML 生成专用子 Agent（独立实例，惰性装配、跨调用复用）：
+  // 复用同一套 Provider，但用独立定义（HTML 专家 prompt、无工具、单轮），
+  // 且 eventSink 用 noop 避免污染主对话 UI 流。
+  let htmlBuilder: AgentInstance | null = null;
+  let htmlBuilderPromise: Promise<AgentInstance> | null = null;
+  async function getHtmlBuilder(): Promise<AgentInstance> {
+    if (htmlBuilder) return htmlBuilder;
+    if (htmlBuilderPromise) return htmlBuilderPromise;
+    htmlBuilderPromise = (async () => {
+      const built = await assembleAgent(
+        {
+          definition: hardenForMobile(PLAYGROUND_AGENT_DEF),
+          sessionKey: `${deps.sessionKey}:playground`,
+          userId: deps.userId,
+          config: deps.config,
+          eventSink: { emit: () => {} },
+          permission: deps.permission,
+          promptContext: deps.promptContext,
+          streamFnFactory: deps.streamFnFactory,
+          // 无工具：HTML 生成是纯文本产出，挂主 Agent 工具集只会干扰、诱发工具调用。
+          tools: [],
+          toolContext: deps.toolContext,
+        },
+        { registry: deps.registry, permissionMemory: deps.permissionMemory, osInfo: "kids-mobile", isSubAgent: true },
+      );
+      // 用纯 playground 提示词覆盖 assembleSystemPrompt 套上的主 Agent 脚手架
+      // （三段式汇报 / task_complete / NO_REPLY 会把「只吐 HTML」的专注指令冲淡，
+      //  导致模型把游戏写进 thinking、最终 text 输出块几乎为空 → 被判「内容过短」）。
+      built.instance.setSystemPrompt(PLAYGROUND_AGENT_DEF.systemPrompt ?? "");
+      htmlBuilder = built.instance;
+      return htmlBuilder;
+    })();
+    return htmlBuilderPromise;
+  }
+
   return {
     instanceId: res.instanceId,
     async prompt(text: string): Promise<PromptResult> {
@@ -173,6 +208,9 @@ export async function createPetSession(deps: PetSessionDeps): Promise<PetSession
       instance.abort();
     },
     dispose() {
+      htmlBuilder?.destroy();
+      htmlBuilder = null;
+      htmlBuilderPromise = null;
       res.dispose();
     },
     updateChildProfile(profile: ChildProfile): void {
@@ -192,21 +230,56 @@ export async function createPetSession(deps: PetSessionDeps): Promise<PetSession
       return instance.getSystemPrompt();
     },
     async generateText(prompt: string, signal?: AbortSignal): Promise<string> {
-      if (!capturedInnerStream) {
-        throw new Error("[createPetSession] innerStream 尚未就绪，无法后台生成");
+      // 走独立 HTML 生成子 Agent（专用 system prompt、无对话人格干扰）。
+      const builder = await getHtmlBuilder();
+      if (signal?.aborted) return "";
+      const onAbort = () => builder.abort();
+      signal?.addEventListener("abort", onAbort, { once: true });
+      try {
+        builder.clearMessages();
+        await builder.prompt(prompt);
+        const msgs = builder.messages;
+        const text = extractLastAssistantText(msgs);
+        deps.log?.(
+          `[generateText] msgs=${msgs.length} roles=[${msgs.map((m) => m.role).join(",")}] ` +
+            `lastAssistantLen=${text.length} ` +
+            `contentTypes=[${msgs.filter((m) => m.role === "assistant").map((m) => (typeof m.content === "string" ? "str" : Array.isArray(m.content) ? `arr:${(m.content as unknown[]).map((p) => (p && typeof p === "object" && "type" in p ? String((p as { type: unknown }).type) : "?")).join("+")}` : typeof m.content)).join(";")}]`,
+        );
+        return text;
+      } finally {
+        signal?.removeEventListener("abort", onAbort);
       }
-      const context: Context = {
-        messages: [{ role: "user", content: prompt, timestamp: Date.now() }],
-      };
-      const streamResult = await capturedInnerStream(res.resolved.model, context, {
-        purpose: "session_summary",
-      } as Parameters<StreamFn>[2]);
-      let text = "";
-      for await (const event of streamResult) {
-        if (signal?.aborted) break;
-        if (event.type === "text_delta") text += event.delta;
-      }
-      return text.trim();
     },
   };
+}
+
+/** 从消息历史里取最后一条 assistant 文本（content 可能是 string 或分段数组）。 */
+function extractLastAssistantText(messages: readonly { role: string; content: unknown }[]): string {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const m = messages[i]!;
+    if (m.role !== "assistant") continue;
+    const c = m.content;
+    if (typeof c === "string") return c.trim();
+    if (Array.isArray(c)) {
+      const text = c
+        .map((part) =>
+          part && typeof part === "object" && "text" in part ? String((part as { text: unknown }).text) : "",
+        )
+        .join("")
+        .trim();
+      if (text) return text;
+      // 回退：deepseek-flash 偶发把整份 HTML 写进 thinking(reasoning_content)、text 块留空
+      //（lastAssistantLen=0 contentTypes=[arr:thinking]）。此时从 thinking 里捞，后续
+      // extractHtmlBlock 会从散文中切出 HTML 区段。
+      return c
+        .map((part) =>
+          part && typeof part === "object" && "thinking" in part
+            ? String((part as { thinking: unknown }).thinking)
+            : "",
+        )
+        .join("")
+        .trim();
+    }
+  }
+  return "";
 }

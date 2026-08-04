@@ -2,7 +2,7 @@
  * Bash Tool — Shell 命令执行
  */
 
-import { Type, type Static } from "@sinclair/typebox";
+import { Type, type Static } from "typebox";
 import type { MtBotToolConfig } from "../tool-adapter.js";
 
 const BashInput = Type.Object({

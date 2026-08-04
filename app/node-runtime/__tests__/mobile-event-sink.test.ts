@@ -63,6 +63,12 @@ describe("mobile-event-sink", () => {
     });
   });
 
+  it("后台生成型 tool:end(status:generating) 不落终态卡片（由 bridge 补发）", () => {
+    const { events, sink } = collect();
+    sink.emit({ type: "tool:end", instanceId: "i", toolCallId: "c", toolName: "create_web_playground", result: { ok: true, status: "generating" }, isError: false });
+    expect(events.some((e) => e.type === "tool_finished")).toBe(false);
+  });
+
   it("agent:error 转友好话术，不泄漏堆栈", () => {
     const { events, sink } = collect();
     sink.emit({ type: "agent:error", instanceId: "i", error: "Error: connection refused at line 42", code: "ECONN" });

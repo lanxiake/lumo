@@ -13,7 +13,8 @@
   "dependencies": {
     "@lumo/agent-runtime": "workspace:*",
     "@lumo/core": "workspace:*",
-    "msedge-tts": "^2.0.5"
+    "msedge-tts": "^2.0.5",
+    "typebox": "^1.1.24"
   },
   "devDependencies": {
     "@testing-library/react": "^16.3.2",

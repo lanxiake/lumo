@@ -129,6 +129,14 @@ export function createMobileEventSink(deps: MobileEventSinkDeps): EventSink {
         }
 
         case "tool:end": {
+          // 后台生成型工具（create_web_playground 未带 html）本轮只返回 status:"generating"，
+          // 真正的成败在后台异步产出。此处不落终态卡片，改由 bridge 在生成结束时按
+          // toolCallId 补发 tool_finished，避免「还没做完就显示完成」。
+          const result = event.result;
+          const isDeferred =
+            typeof result === "object" && result !== null &&
+            (result as { status?: unknown }).status === "generating";
+          if (isDeferred) break;
           const resultSummary = summarizeToolPayload(event.result);
           deps.emit({
             type: "tool_finished",

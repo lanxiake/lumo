@@ -3,7 +3,7 @@ import { ToolRunner } from "../../tools/tool-runner.js";
 import { CapabilityRegistry } from "../capability-registry.js";
 import type { CapabilityDescriptor } from "../types.js";
 import type { MtBotTool } from "../../types/tool.js";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 
 function makeDescriptor(id: string, overrides: Partial<CapabilityDescriptor> = {}): CapabilityDescriptor {
   return {

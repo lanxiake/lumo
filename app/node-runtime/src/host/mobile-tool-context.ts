@@ -46,6 +46,8 @@ export interface MobileToolExecutionContext extends ToolExecutionContext {
   listCreations: () => readonly CreationMeta[];
   /** 当前编辑目标（get_edit_target 读取原始 html），无则 null */
   getEditTarget: () => EditTarget | null;
+  /** 正在后台生成中的游戏标题（list_my_creations 回报真实进度），无则 null */
+  getPendingPlayground: () => string | null;
   /** 请求孩子确认活动（confirm_activity），经 bridge 往返 RN，返回是否同意 */
   requestConfirm: (kind: "game" | "drawing", title: string) => Promise<boolean>;
   /**
@@ -57,6 +59,8 @@ export interface MobileToolExecutionContext extends ToolExecutionContext {
     type: "game" | "effect" | "interactive";
     title: string;
     description: string;
+    /** 触发本次生成的工具调用 id，供生成结束后补发 tool_finished 终态卡片 */
+    toolCallId?: string;
   }) => void;
 }
 
@@ -97,6 +101,8 @@ export interface MobileToolContextDeps {
   readonly listCreations?: () => readonly CreationMeta[];
   /** 当前编辑目标供给（get_edit_target 用），缺省 null */
   readonly getEditTarget?: () => EditTarget | null;
+  /** 后台生成中的游戏标题供给（list_my_creations 用），缺省 null */
+  readonly getPendingPlayground?: () => string | null;
   /** 确认活动往返（confirm_activity 用），缺省视为同意（无家长在场时不阻塞） */
   readonly requestConfirm?: (kind: "game" | "drawing", title: string) => Promise<boolean>;
   /** 后台异步生成互动页面（缺省不支持，工具回退同步路径或报错） */
@@ -104,6 +110,7 @@ export interface MobileToolContextDeps {
     type: "game" | "effect" | "interactive";
     title: string;
     description: string;
+    toolCallId?: string;
   }) => void;
 }
 
@@ -144,6 +151,7 @@ export function createMobileToolContext(deps: MobileToolContextDeps): MobileTool
     // ── 资源复用 / 编辑 / 确认（creations/confirm/edit 工具用） ──
     listCreations: () => deps.listCreations?.() ?? [],
     getEditTarget: () => deps.getEditTarget?.() ?? null,
+    getPendingPlayground: () => deps.getPendingPlayground?.() ?? null,
     requestConfirm: (kind, title) =>
       deps.requestConfirm ? deps.requestConfirm(kind, title) : Promise.resolve(true),
     ...(deps.generatePlayground ? { generatePlayground: deps.generatePlayground } : {}),

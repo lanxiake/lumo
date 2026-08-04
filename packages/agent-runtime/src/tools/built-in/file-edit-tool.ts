@@ -7,7 +7,7 @@
  * 3. 行内空白归一(whitespace_normalized)
  */
 
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import type { MtBotToolConfig } from "../tool-adapter.js";
 import { resolveAgentFilePath } from "../resolve-file-path.js";
 

@@ -9,7 +9,7 @@
  * 时 goBack 回到设置；栈空或 closeOverlay 才回宠物舞台。
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SoundEffectPlayerHandle } from "../components/SoundEffectPlayer";
 import type { SecureStorage } from "../auth/secureStorage";
 import {
@@ -305,16 +305,10 @@ export function useAppActions(options: UseAppActionsOptions = {}): UseAppActions
     setGameHistory((prev) => prev.filter((g) => g.id !== id));
   }, []);
 
-  return {
-    state: {
-      currentScreen,
-      overlayOpen,
-      toast,
-      galleryImages,
-      gameHistory,
-      playground,
-    },
-    actions: {
+  // actions 各回调已 useCallback 稳定；把容器对象也 useMemo 固定，
+  // 避免每次渲染产出新对象引用，触发下游（App/useNodeEvents）无谓重渲染。
+  const actions = useMemo<AppActions>(
+    () => ({
       navigate,
       playSound,
       showToast,
@@ -325,6 +319,19 @@ export function useAppActions(options: UseAppActionsOptions = {}): UseAppActions
       goBack,
       deleteImage,
       deleteGame,
+    }),
+    [navigate, playSound, showToast, openGallery, openPlayground, closePlayground, closeOverlay, goBack, deleteImage, deleteGame],
+  );
+
+  return {
+    state: {
+      currentScreen,
+      overlayOpen,
+      toast,
+      galleryImages,
+      gameHistory,
+      playground,
     },
+    actions,
   };
 }

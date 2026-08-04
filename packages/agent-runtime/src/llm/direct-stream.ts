@@ -58,10 +58,15 @@ export function createDirectStreamFn(opts: CreateDirectStreamFnOptions): StreamF
     // ModelRouter.resolveExplicitModelId 只产出 {id, api} 最小模型——直连场景必须
     // 补全这些字段，否则 pi-ai 内部 undefined.includes 崩溃。
     const m = model as Partial<Model<string>> & { id: string };
+    // DeepSeek 端点（如自建 kms.* 代理，baseUrl 非 deepseek.com 无法被 pi-ai 自动识别）：
+    // 显式标记 thinkingFormat=deepseek 并开 reasoning 门控，配合下方不带 reasoningEffort，
+    // 让 pi-ai 发 thinking:{type:"disabled"} 关闭思考模式——否则端点默认偶发开启思考，
+    // 模型会把整份产物写进 reasoning_content（正文空）、耗时数分钟（儿童场景延迟优先）。
+    const isDeepSeek = m.id.toLowerCase().includes("deepseek") || normalizedApi === "openai-completions" && (m.baseUrl ?? baseUrl ?? "").includes("deepseek");
     const effectiveModel = {
       ...model,
       provider: m.provider ?? "openai",
-      reasoning: m.reasoning ?? false,
+      reasoning: isDeepSeek ? true : (m.reasoning ?? false),
       input: m.input ?? ["text"],
       cost: m.cost ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
       contextWindow: m.contextWindow ?? 1_000_000,
@@ -69,6 +74,7 @@ export function createDirectStreamFn(opts: CreateDirectStreamFnOptions): StreamF
       name: m.name ?? m.id,
       api: normalizedApi,
       baseUrl: model.baseUrl && model.baseUrl.length > 0 ? model.baseUrl : baseUrl ?? "",
+      ...(isDeepSeek ? { compat: { ...((m.compat as Record<string, unknown> | undefined) ?? {}), thinkingFormat: "deepseek" as const } } : {}),
     } as Model<typeof model.api>;
 
     opts.log?.(
@@ -80,7 +86,20 @@ export function createDirectStreamFn(opts: CreateDirectStreamFnOptions): StreamF
       // 本地 OpenAI 兼容端点（Ollama 等）通常免鉴权，但 pi-ai 的 openai-completions
       // provider 强制校验 apiKey 存在性。无 key 时填占位符让校验通过（端点会忽略它）。
       apiKey: apiKey || options?.apiKey || "local-no-key",
+      // DeepSeek 关思考：清掉 reasoning，pi-ai 的 deepseek 分支据此发 thinking:{type:"disabled"}。
+      ...(isDeepSeek ? { reasoning: undefined } : {}),
       ...(headers ? { headers: { ...headers, ...(options?.headers ?? {}) } } : {}),
+      // 计装（direct 直连无 onLlmRequestStart 配线，故内联打点，实测「请求是否真发出/是否有响应」）：
+      // onPayload 在 fetch 前触发，onResponse 在 HTTP 响应头到达时触发。链上已有的
+      // onPayload/onResponse（若有）先调用再透传，不吞掉调用方回调。
+      onPayload: (async (params: unknown, mdl: unknown) => {
+        opts.log?.(`[direct-stream] HTTP 请求即将发出 model=${effectiveModel.id} baseUrl=${effectiveModel.baseUrl || "(none)"}`);
+        return (options?.onPayload as ((p: unknown, m: unknown) => unknown) | undefined)?.(params, mdl);
+      }) as NonNullable<typeof options>["onPayload"],
+      onResponse: (async (resp: { status?: number }, mdl: unknown) => {
+        opts.log?.(`[direct-stream] 收到 HTTP 响应 status=${resp?.status ?? "?"} model=${effectiveModel.id}`);
+        return (options?.onResponse as ((r: unknown, m: unknown) => unknown) | undefined)?.(resp, mdl);
+      }) as NonNullable<typeof options>["onResponse"],
     };
 
     return impl(effectiveModel, context, mergedOptions);

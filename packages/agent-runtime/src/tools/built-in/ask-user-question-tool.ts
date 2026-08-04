@@ -16,7 +16,7 @@
  *    （参见 packages/agent-runtime/src/agent/builtin/definitions.ts）。
  */
 
-import { Type, type Static } from "@sinclair/typebox";
+import { Type, type Static } from "typebox";
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
 import type { MtBotToolConfig } from "../tool-adapter.js";
 import { ASK_USER_QUESTION_TOOL_NAME } from "./tool-names.js";

@@ -10,7 +10,7 @@ import type {
   AgentToolResult,
   AgentToolUpdateCallback,
 } from "@mariozechner/pi-agent-core";
-import type { TSchema, Static } from "@sinclair/typebox";
+import type { TSchema, Static } from "typebox";
 import type { SkillInfo } from "../prompt/system-prompt-builder.js";
 
 /** 工具分类 */

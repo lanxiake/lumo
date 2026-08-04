@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import { ToolRunner } from "../tools/tool-runner.js";
 import { wrapMtBotToolsWithRunner } from "../tools/tool-registry.js";
 import { createMtBotTool } from "../tools/tool-adapter.js";

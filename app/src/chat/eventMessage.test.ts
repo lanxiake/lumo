@@ -38,7 +38,7 @@ describe("eventMessage encode/decode", () => {
 describe("toolLabelFor", () => {
   it("已知工具映射中文", () => {
     expect(toolLabelFor("image_generate")).toBe("画画");
-    expect(toolLabelFor("create_web_playground")).toBe("做小游戏");
+    expect(toolLabelFor("create_web_playground")).toBe("做游戏");
     expect(toolLabelFor("web_search")).toBe("查资料");
   });
   it("未知工具回退为原始工具名", () => {
@@ -52,19 +52,19 @@ describe("eventCardLabel", () => {
       eventCardLabel({
         kind: "tool_activity",
         toolName: "create_web_playground",
-        toolLabel: "做小游戏",
+        toolLabel: "做游戏",
         status: "start",
       }),
-    ).toBe("🔧 开始 · create_web_playground（做小游戏）");
+    ).toBe("🔧 开始 · create_web_playground（做游戏）");
     expect(
       eventCardLabel({
         kind: "tool_activity",
         toolName: "create_web_playground",
-        toolLabel: "做小游戏",
+        toolLabel: "做游戏",
         status: "done",
         ok: true,
       }),
-    ).toBe("✅ 完成 · create_web_playground（做小游戏）");
+    ).toBe("✅ 完成 · create_web_playground（做游戏）");
     expect(
       eventCardLabel({
         kind: "tool_activity",

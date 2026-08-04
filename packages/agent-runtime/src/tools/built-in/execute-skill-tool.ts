@@ -5,7 +5,7 @@
  * stub 实现由平台集成层（bridge）覆盖，注入真实的 SkillRuntime 引用。
  */
 
-import { Type, type Static } from "@sinclair/typebox";
+import { Type, type Static } from "typebox";
 import type { MtBotToolConfig } from "../../tools/tool-adapter.js";
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
 import { EXECUTE_SKILL_TOOL_NAME } from "./tool-names.js";

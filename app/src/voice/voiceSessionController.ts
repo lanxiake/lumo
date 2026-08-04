@@ -61,10 +61,10 @@ export const BARGE_IN_MIN_SPEECH_MS = 300;
  * 完全不在一个量级，「mic ≥ play*ratio」的能量比方案在带 AEC 的设备上恒不成立，
  * 人声再大也打不断。故放弃能量比，能量门只保留「地板判断」：mic 高于地板即视为
  * 有声音，是否回声改由文本过滤链（repeat/echo/garbage/min_chars/二次确认）区分。
- * 地板取 0.025：略高于纯静默底噪（观测 ~0.01），又不挡住被华为 AEC 压到
+ * 地板取 0.03：略高于纯静默底噪（观测 ~0.01），又不挡住被华为 AEC 压到
  * 0.02~0.03 的真实近场人声（原 0.04 观测偏高、近场语音常被误判静默而打不断）。
  */
-export const BARGE_IN_MIN_MIC_LEVEL = 0.025;
+export const BARGE_IN_MIN_MIC_LEVEL = 0.03;
 
 /**
  * Phase 4 预留：真 VAD「检测到用户开口」回调。
@@ -525,7 +525,7 @@ export function createVoiceSessionController(initial?: Partial<VoiceSessionContr
       return { effects: [] };
     }
     // 语种无关：跨语种/方言时文本无法比相似度，改用重复特征识别回声
-    if (hasHeavyRepetition(trimmed)) {
+    if (hasHeavyRepetition(trimmed, { ratioThreshold: 0.3 })) {
       clearBargeArm();
       log(`[barge] partial 拒:重复串 字="${trimmed}"`);
       return { effects: [] };

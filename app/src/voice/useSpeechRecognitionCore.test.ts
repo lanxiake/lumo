@@ -109,7 +109,7 @@ describe("useSpeechRecognitionCore — 开始/停止/取消", () => {
 
   it("已在聆听时重复 start 不再调用 nativeModule", async () => {
     const mod = createMockNativeModule();
-    const { emitter } = createMockEmitter();
+    const { emitter, trigger } = createMockEmitter();
     const { result } = renderHook(() =>
       useSpeechRecognitionCore({
         nativeModule: mod,
@@ -121,7 +121,7 @@ describe("useSpeechRecognitionCore — 开始/停止/取消", () => {
       await result.current.start();
     });
     act(() => {
-      emitter.emit("onSpeechStart", undefined);
+      trigger("onSpeechStart", undefined);
     });
     await act(async () => {
       await result.current.start();

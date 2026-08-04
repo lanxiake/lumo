@@ -4,7 +4,7 @@
  * 简化从 plain config 创建 MtBotTool 实例的过程。
  */
 
-import type { TSchema, Static } from "@sinclair/typebox";
+import type { TSchema, Static } from "typebox";
 import type {
   MtBotTool,
   ToolCategory,

@@ -85,7 +85,6 @@ import { Toast } from "./src/components/Toast";
 import { TapEffect } from "./src/components/TapEffect";
 import { SwipeToDismiss } from "./src/components/SwipeToDismiss";
 import { ConfirmCard } from "./src/components/ConfirmCard";
-import { EditInstructionModal } from "./src/components/EditInstructionModal";
 import { BUILTIN_GAMES, type BuiltinGame } from "./src/games/builtinGames";
 import { wrapPlaygroundHtml } from "./node-runtime/src/tools/playground-html";
 import { SoundEffectPlayer, type SoundEffectPlayerHandle } from "./src/components/SoundEffectPlayer";
@@ -315,8 +314,6 @@ function MainApp(props: MainAppProps): React.JSX.Element {
   const [confirmCard, setConfirmCard] = useState<{ requestId: string; kind: "game" | "drawing"; title: string } | null>(null);
   // 当前正在执行的工具标签（做小游戏/画画/查资料…），用于宠物旁常驻忙碌提示；null=空闲
   const [activeToolLabel, setActiveToolLabel] = useState<string | null>(null);
-  // "改一改"输入弹窗：记录待编辑的游戏
-  const [editTarget, setEditTarget] = useState<{ gameId: string; title: string; html: string } | null>(null);
   // 系统日志（Node 侧 SystemLogBuffer，经 system_logs_result 事件回传）
   const [sysLogs, setSysLogs] = useState<readonly SystemLogLineWire[]>([]);
   const [sysLogTotal, setSysLogTotal] = useState(0);
@@ -561,6 +558,10 @@ function MainApp(props: MainAppProps): React.JSX.Element {
   } = usePaginatedHistory({ sessionKey: DEFAULT_INIT.sessionKey, live: messages });
   const streamingIdRef = useRef<number | null>(null);
   const lastHandledRef = useRef<MobileNodeEvent | null>(null);
+  // delta 节流：把每 token 一次 setMessages 合并到 ~32ms 一次，避免流式期间
+  // 频繁重渲染整条聊天列表拖慢共享 JS 线程（点击其他 UI 卡顿的主因）。
+  const deltaBufRef = useRef<string>("");
+  const deltaTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 标签解析器：从 Agent 流中提取 [emotion] / [motion:tag] 并驱动模型
   const tagParser = useTagParser({
@@ -605,17 +606,42 @@ function MainApp(props: MainAppProps): React.JSX.Element {
     });
   }, [tagParser]);
 
-  /** 把 delta 累加到当前流式 assistant 消息 */
-  const appendAssistantDelta = useCallback((delta: string) => {
+  /** 把缓冲的 delta 一次性刷入流式消息（节流回调 / finalize 时调用） */
+  const flushDeltaBuf = useCallback(() => {
+    if (deltaTimerRef.current) {
+      clearTimeout(deltaTimerRef.current);
+      deltaTimerRef.current = null;
+    }
+    const chunk = deltaBufRef.current;
+    deltaBufRef.current = "";
     const id = streamingIdRef.current;
-    if (!id) return;
+    if (!id || !chunk) return;
     setMessages((prev) =>
-      prev.map((m) => (m.id === id ? { ...m, content: m.content + delta } : m)),
+      prev.map((m) => (m.id === id ? { ...m, content: m.content + chunk } : m)),
     );
   }, []);
 
-  /** 流式结束：用完整文本兜底 */
+  /** 把 delta 累加进缓冲，~32ms 后合并刷新（节流，减少流式期重渲染） */
+  const appendAssistantDelta = useCallback((delta: string) => {
+    if (!streamingIdRef.current) return;
+    deltaBufRef.current += delta;
+    if (!deltaTimerRef.current) {
+      deltaTimerRef.current = setTimeout(flushDeltaBuf, 32);
+    }
+  }, [flushDeltaBuf]);
+
+  // 卸载时清掉悬挂的节流定时器，避免对已卸载组件 setState。
+  useEffect(() => () => {
+    if (deltaTimerRef.current) clearTimeout(deltaTimerRef.current);
+  }, []);
+
+  /** 流式结束：先刷掉缓冲余量，再用完整文本兜底 */
   const finalizeAssistantStream = useCallback((fullText: string) => {
+    if (deltaTimerRef.current) {
+      clearTimeout(deltaTimerRef.current);
+      deltaTimerRef.current = null;
+    }
+    deltaBufRef.current = "";
     const id = streamingIdRef.current;
     if (!id || !fullText) return;
     setMessages((prev) =>
@@ -1006,38 +1032,6 @@ function MainApp(props: MainAppProps): React.JSX.Element {
         ? "准备说话…"
         : null;
 
-  // [RENDER-DEBUG] 无限渲染排查：统计渲染次数 + 每帧哪些追踪值引用变了。
-  // 短窗内渲染暴涨即命中循环，变化列表指出触发源。排查完删除。
-  const renderCountRef = useRef(0);
-  const renderWindowRef = useRef({ at: Date.now(), count: 0 });
-  const prevTrackedRef = useRef<Record<string, unknown>>({});
-  {
-    renderCountRef.current += 1;
-    const tracked: Record<string, unknown> = {
-      lastEvent, messages, appState, appActions, state, input, activeToolLabel,
-      confirmCard, editTarget, keyboardHeight, duplexEnabled, dockHistory,
-      childProfile, providerConfig, imageProviderConfig, sysLogs, metrics,
-      tagParser, gameHistory: appState.gameHistory, galleryImages: appState.galleryImages,
-    };
-    const changed: string[] = [];
-    for (const k of Object.keys(tracked)) {
-      if (prevTrackedRef.current[k] !== tracked[k]) changed.push(k);
-    }
-    prevTrackedRef.current = tracked;
-    const w = renderWindowRef.current;
-    w.count += 1;
-    const dt = Date.now() - w.at;
-    if (dt >= 1000) {
-      const msg = `[RENDER-DEBUG] ${w.count} renders/${dt}ms total=${renderCountRef.current} changed=[${changed.join(",")}]`;
-      console.log(msg);
-      clientLog(msg);
-      w.at = Date.now();
-      w.count = 0;
-    } else if (renderCountRef.current <= 30 || renderCountRef.current % 20 === 0) {
-      console.log(`[RENDER-DEBUG] #${renderCountRef.current} changed=[${changed.join(",")}]`);
-    }
-  }
-
   return (
     <>
       {duplexEnabled ? (
@@ -1231,8 +1225,15 @@ function MainApp(props: MainAppProps): React.JSX.Element {
               onEdit={
                 currentGame
                   ? () => {
+                      // 不弹打字框（小朋友打字困难）：关游戏 + 空指令进入「询问模式」，
+                      // 宠物主动语音问"想怎么改呀?"，小朋友直接说话回答（走语音对话链路）。
                       handleClosePlayground("user");
-                      setEditTarget({ gameId: currentGame.id, title: currentGame.title, html: currentGame.html });
+                      editCreation({
+                        gameId: currentGame.id,
+                        title: currentGame.title,
+                        html: currentGame.html,
+                        instruction: "",
+                      });
                     }
                   : undefined
               }
@@ -1298,24 +1299,6 @@ function MainApp(props: MainAppProps): React.JSX.Element {
         onReject={() => {
           if (confirmCard) sendConfirm(confirmCard.requestId, false);
           setConfirmCard(null);
-        }}
-      />
-
-      {/* "改一改"修改要求输入 */}
-      <EditInstructionModal
-        visible={editTarget != null}
-        gameTitle={editTarget?.title ?? ""}
-        onCancel={() => setEditTarget(null)}
-        onSubmit={(instruction) => {
-          if (editTarget) {
-            editCreation({
-              gameId: editTarget.gameId,
-              title: editTarget.title,
-              html: editTarget.html,
-              instruction,
-            });
-          }
-          setEditTarget(null);
         }}
       />
     </>

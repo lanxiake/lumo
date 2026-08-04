@@ -4,7 +4,7 @@
  * 将 MCP Server 暴露的工具列表转换为 MtBotTool[]，注册到 ToolRegistry。
  */
 
-import { Type, type TSchema } from "@sinclair/typebox";
+import { Type, type TSchema } from "typebox";
 import type { MtBotTool, ToolCategory } from "../../types/tool.js";
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
 import type { McpStdioClient, McpToolDefinition } from "./mcp-client.js";

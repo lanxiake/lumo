@@ -42,6 +42,7 @@ function buildContext(options: {
     fetchImpl: options.fetchImpl,
     listCreations: () => [],
     getEditTarget: () => null,
+    getPendingPlayground: () => null,
     requestConfirm: async () => true,
   } as MobileToolExecutionContext;
 }

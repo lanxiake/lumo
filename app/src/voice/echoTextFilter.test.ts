@@ -95,5 +95,19 @@ describe("echoTextFilter", () => {
       expect(hasHeavyRepetition("你好呀")).toBe(false);
       expect(hasHeavyRepetition("等等啊")).toBe(false);
     });
+
+    // 真机漏判回归（2026-08-04 系统日志）：barge 路径用 ratioThreshold 0.3 才拦得住
+    it("乱码抖音回声（ratio≈0.34）在 0.3 阈值下判为回声", () => {
+      const stt = "好好好呀小佳佳佳佳佳佳佳佳佳佳丽家想想完警察查抓小偷偷的游戏我现我先看看有没有没有";
+      expect(hasHeavyRepetition(stt)).toBe(false); // 默认 0.4 漏判
+      expect(hasHeavyRepetition(stt, { ratioThreshold: 0.3 })).toBe(true);
+    });
+  });
+
+  // 真机漏判回归（2026-08-04）：清洁回声靠 bigramCoverage 0.85 阈值拦下
+  it("清洁回声整句在 barge 路径判为回声（coverage≈0.89）", () => {
+    const tts = "小警察还在路上跑呢马上就到啦等游戏的时候我们一起猜猜看小偷会藏在哪里呢";
+    const stt = "小警察还在路上跑呢马马上就到了等游戏的时候";
+    expect(looksLikeTtsEcho(stt, tts, { profile: "barge" })).toBe(true);
   });
 });

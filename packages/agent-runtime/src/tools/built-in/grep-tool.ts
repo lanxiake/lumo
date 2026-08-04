@@ -5,7 +5,7 @@
  * 超出时提示缩小搜索范围或使用 glob 过滤。
  */
 
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import type { MtBotToolConfig } from "../tool-adapter.js";
 
 /** 单次搜索的默认结果上限 */

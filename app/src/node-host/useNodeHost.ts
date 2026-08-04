@@ -175,7 +175,10 @@ export function useNodeHost(options: UseNodeHostOptions = {}): UseNodeHostResult
   }, []);
 
   const requestSystemLogs = useCallback((maxItems?: number) => {
-    bridgeRef.current?.send({ type: "get_system_logs", payload: { maxItems } });
+    // 守卫：只透传真正的数字，避免调用方把事件对象等当 maxItems 传入
+    // 导致 payload 含循环结构、JSON.stringify 抛 "cyclical structure"。
+    const safeMax = typeof maxItems === "number" ? maxItems : undefined;
+    bridgeRef.current?.send({ type: "get_system_logs", payload: { maxItems: safeMax } });
   }, []);
 
   const clientLog = useCallback((message: string) => {

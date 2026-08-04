@@ -100,7 +100,7 @@ export function SystemLogsScreen(props: SystemLogsScreenProps): React.JSX.Elemen
           </TouchableOpacity>
         ))}
         <View style={{ flex: 1 }} />
-        <TouchableOpacity style={styles.refreshBtn} onPress={requestLogs} activeOpacity={0.7}>
+        <TouchableOpacity style={styles.refreshBtn} onPress={() => requestLogs()} activeOpacity={0.7}>
           <Text style={styles.refreshText}>刷新</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.exportBtn} onPress={handleExport} activeOpacity={0.7}>

@@ -197,7 +197,7 @@ export function looksLikeTtsEcho(
 ): boolean {
   const profile = opts?.profile ?? "final";
   const threshold = opts?.jaccardThreshold ?? (profile === "barge" ? 0.65 : 0.55);
-  const coverageThreshold = opts?.coverageThreshold ?? (profile === "barge" ? 0.9 : 0.75);
+  const coverageThreshold = opts?.coverageThreshold ?? (profile === "barge" ? 0.85 : 0.75);
   const subseqThreshold = opts?.subsequenceThreshold ?? (profile === "barge" ? 0.85 : 0.72);
   const minLen = opts?.minSttLength ?? 2;
 

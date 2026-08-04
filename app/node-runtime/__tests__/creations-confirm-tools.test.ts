@@ -54,6 +54,20 @@ describe("list_my_creations", () => {
     expect(d.games).toHaveLength(1);
     expect(d.builtinGames).toHaveLength(BUILTIN_GAME_META.length);
   });
+
+  it("后台生成中 → generatingGame 回报进度", async () => {
+    const res = await listMyCreationsToolConfig.execute(
+      "t1",
+      {},
+      fakeCtx({ getPendingPlayground: () => "抓蝴蝶" }),
+    );
+    expect((res.details as { generatingGame?: string }).generatingGame).toBe("抓蝴蝶");
+  });
+
+  it("无后台任务 → 不含 generatingGame", async () => {
+    const res = await listMyCreationsToolConfig.execute("t1", {}, fakeCtx());
+    expect((res.details as { generatingGame?: string }).generatingGame).toBeUndefined();
+  });
 });
 
 describe("open_creation", () => {

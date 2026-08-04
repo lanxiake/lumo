@@ -5,7 +5,7 @@
  * 可选：由宿主通过 ToolRunner cache hook 做 TTL 缓存（见 apps/windows bridge）
  */
 
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import type { MtBotToolConfig } from "../tool-adapter.js";
 import { DEFAULT_TIMEOUT_SECONDS, validateUrl, withTimeout } from "./web-shared.js";
 

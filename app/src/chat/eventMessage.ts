@@ -61,12 +61,12 @@ export function toolLabelFor(toolName: string): string {
     case "image_generate":
       return "画画";
     case "create_web_playground":
-      return "做小游戏";
+      return "做游戏";
     case "web_fetch":
     case "web_search":
       return "查资料";
     case "list_my_creations":
-      return "找作品";
+      return "找找现成的";
     case "open_creation":
       return "打开游戏";
     case "get_edit_target":
@@ -141,9 +141,14 @@ export interface ToolCardView {
 export function toolCardView(payload: ToolActivityEventPayload): ToolCardView {
   const label = payload.toolLabel || toolLabelFor(payload.toolName);
   const icon = toolIconFor(payload.toolName);
+  // 做游戏是唯一「耗时后台生成」的工具（进行中态会持续几十秒，完成态由 bridge
+  // 在真正做好后才补发），给它定制文案，避免「进行中…/完成」让人误以为卡住或已就绪。
+  const isPlayground = payload.toolName === "create_web_playground";
   if (payload.status === "start") {
     return {
-      icon, label, statusText: "进行中…", tone: "running",
+      icon, label,
+      statusText: isPlayground ? "正在做，要等一小会儿哦~" : "进行中…",
+      tone: "running",
       ...(payload.paramsSummary ? { detail: `“${payload.paramsSummary}”` } : {}),
     };
   }
@@ -153,7 +158,12 @@ export function toolCardView(payload: ToolActivityEventPayload): ToolCardView {
   if (payload.ok === false) {
     return { icon, label, statusText: "没成功", tone: "error", ...(detail ? { detail } : {}) };
   }
-  return { icon, label, statusText: "完成", tone: "done", ...(detail ? { detail } : {}) };
+  return {
+    icon, label,
+    statusText: isPlayground ? "进行中···" : "完成",
+    tone: "done",
+    ...(detail ? { detail } : {}),
+  };
 }
 
 export function encodeEventMessage(payload: ChatEventPayload): string {

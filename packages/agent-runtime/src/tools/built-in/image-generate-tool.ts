@@ -21,7 +21,7 @@
 /** Right Code 绘图接口文档（供工具描述与错误提示引用） */
 export const IMAGE_DRAW_API_DOCS = "https://docs.right.codes/docs/rc_extension/draw"
 
-import { Type, type Static } from "@sinclair/typebox";
+import { Type, type Static } from "typebox";
 import type { MtBotToolConfig } from "../tool-adapter.js";
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
 import { buildImageModelSelectionGuideForAgent } from "./image-models.js";

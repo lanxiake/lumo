@@ -9,7 +9,7 @@
  * 移动端不保存文件到本地文件系统，避免文件路径跨平台差异和儿童隐私暴露。
  */
 
-import { Type, type Static } from "@sinclair/typebox";
+import { Type, type Static } from "typebox";
 import {
   type MtBotToolConfig,
   type AgentToolResult,

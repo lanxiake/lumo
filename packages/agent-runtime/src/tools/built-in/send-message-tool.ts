@@ -4,7 +4,7 @@
  * 向指定 Agent 或广播发送消息。
  */
 
-import { Type, type Static } from "@sinclair/typebox";
+import { Type, type Static } from "typebox";
 import type { MtBotToolConfig } from "../../tools/tool-adapter.js";
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
 

@@ -5,7 +5,7 @@
  * Stub 实现，Electron bridge 层覆盖 execute 实现真实逻辑。
  */
 
-import { Type, type Static } from "@sinclair/typebox";
+import { Type, type Static } from "typebox";
 import type { MtBotToolConfig } from "../tool-adapter.js";
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
 

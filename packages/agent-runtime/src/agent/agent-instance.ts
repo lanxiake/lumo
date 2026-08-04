@@ -308,7 +308,7 @@ export class AgentInstance {
       getAgent: () => ({
         messages: this.agent.state.messages,
         systemPrompt: this.agent.state.systemPrompt ?? "",
-        setSystemPrompt: (prompt: string) => this.agent.setSystemPrompt(prompt),
+        setSystemPrompt: (prompt: string) => { this.agent.state.systemPrompt = prompt; },
       }),
       getTurnCount: () => this.turnCount,
       getInjectWorkMemory: () => this.injectWorkMemory,
@@ -319,8 +319,8 @@ export class AgentInstance {
       maxRetries: 2,
       cooldownMs: 1000,
       getMessages: () => this.agent.state.messages,
-      replaceMessages: (messages) => this.agent.replaceMessages(messages),
-      appendMessage: (message) => this.agent.appendMessage(message),
+      replaceMessages: (messages) => { this.agent.state.messages = messages; },
+      appendMessage: (message) => { this.agent.state.messages = [...this.agent.state.messages, message]; },
       continueAgent: () => this.agent.continue(),
       isDestroyed: () => this._state === "destroyed",
       isEndingPause: () => this.endingPause,
@@ -555,7 +555,7 @@ export class AgentInstance {
           this.capabilityRegistry.getForOrigin(origin).map((c) => c.id),
         );
         const filtered = this.agent.state.tools?.filter((t) => allowedIds.has(t.name)) ?? [];
-        this.agent.setTools(filtered);
+        this.agent.state.tools = filtered;
       }
       await this.kernel.startTurn({
         message,
@@ -608,12 +608,12 @@ export class AgentInstance {
 
   /** 更新工具列表 */
   setTools(tools: AgentTool[]): void {
-    this.agent.setTools(tools);
+    this.agent.state.tools = tools;
   }
 
   /** 更新系统提示词 */
   setSystemPrompt(prompt: string): void {
-    this.agent.setSystemPrompt(prompt);
+    this.agent.state.systemPrompt = prompt;
   }
 
   /** 读取当前系统提示词（含记忆注入等动态部分，用于上下文用量估算） */
@@ -628,7 +628,7 @@ export class AgentInstance {
 
   /** 清空消息历史 */
   clearMessages(): void {
-    this.agent.clearMessages();
+    this.agent.state.messages = [];
     this.accumulatedText = "";
   }
 
@@ -671,7 +671,7 @@ export class AgentInstance {
    * 设计文档 §6.5
    */
   replaceMessages(messages: AgentMessage[]): void {
-    this.agent.replaceMessages(messages);
+    this.agent.state.messages = messages;
     this.accumulatedText = "";
   }
 
@@ -702,7 +702,7 @@ export class AgentInstance {
    * 设计文档 §4.3
    */
   appendMessage(message: AgentMessage): void {
-    this.agent.appendMessage(message);
+    this.agent.state.messages = [...this.agent.state.messages, message];
   }
 
   /** 清空所有消息队列（steering + followUp） */

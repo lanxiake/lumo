@@ -4,7 +4,7 @@
  * Node 侧只做参数校验、HTML 安全检查和事件转发，实际渲染由 RN WebView 完成。
  */
 
-import { Type, type Static } from "@sinclair/typebox";
+import { Type, type Static } from "typebox";
 import type { MtBotToolConfig, AgentToolResult, ToolExecutionContext } from "@lumo/agent-runtime";
 import type { MobileToolExecutionContext } from "../host/mobile-tool-context.js";
 import type { MobileNodeEvent } from "../bridge/schema.js";
@@ -43,7 +43,7 @@ export const createWebPlaygroundToolConfig: MtBotToolConfig<typeof WebPlayground
   isReadOnly: true,
   needsPermission: false,
   execute: async (
-    _toolCallId: string,
+    toolCallId: string,
     params: WebPlaygroundInput,
     context: ToolExecutionContext,
   ): Promise<AgentToolResult<{ ok: boolean; error?: string; status?: string }>> => {
@@ -54,7 +54,7 @@ export const createWebPlaygroundToolConfig: MtBotToolConfig<typeof WebPlayground
     // 未提供 html 且宿主支持后台生成 → 派发异步生成，本轮工具立即返回（主对话不被大段 HTML 阻塞）。
     // 编辑流（isEditing）总是带上改好的 html，走下方同步路径就地替换。
     if (!params.html && mobileCtx.generatePlayground) {
-      mobileCtx.generatePlayground({ type: params.type, title: params.title, description: params.description });
+      mobileCtx.generatePlayground({ type: params.type, title: params.title, description: params.description, toolCallId });
       return {
         content: [{ type: "text", text: JSON.stringify({ ok: true, status: "generating" }) }],
         details: { ok: true, status: "generating" },

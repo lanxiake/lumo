@@ -17,6 +17,14 @@ import { createSystemLogBuffer } from "./perf/system-logs.js";
 import { startPerfMonitor } from "./perf/perf-monitor.js";
 import { ensureOpenAiV1 } from "./host/provider-url.js";
 
+process.on("uncaughtException", (err) => {
+  process.stderr.write(`[kids-mobile] uncaughtException: ${err && err.stack ? err.stack : String(err)}\n`);
+});
+process.on("unhandledRejection", (reason) => {
+  const r = reason as { stack?: string } | undefined;
+  process.stderr.write(`[kids-mobile] unhandledRejection: ${r && r.stack ? r.stack : String(reason)}\n`);
+});
+
 /**
  * 事件 → 远程日志映射（仅错误 + 关键事件；返回 null 表示不上报）。
  * 儿童安全：不上报对话原文（delta/final），只上报错误码与生命周期打点。
@@ -202,7 +210,14 @@ export function startMobileHost(): void {
 }
 
 // 作为 nodejs-mobile 主脚本运行时自动启动
-startMobileHost();
+try {
+  startMobileHost();
+} catch (err) {
+  process.stderr.write(
+    `[kids-mobile] startMobileHost THREW: ${err && (err as Error).stack ? (err as Error).stack : String(err)}\n`,
+  );
+  throw err;
+}
 
 export { createMobileBridge } from "./bridge/mobileBridge.js";
 export type { MobileNodeCommand, MobileNodeEvent } from "./bridge/schema.js";
