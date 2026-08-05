@@ -74,7 +74,19 @@ export function createDirectStreamFn(opts: CreateDirectStreamFnOptions): StreamF
       name: m.name ?? m.id,
       api: normalizedApi,
       baseUrl: model.baseUrl && model.baseUrl.length > 0 ? model.baseUrl : baseUrl ?? "",
-      ...(isDeepSeek ? { compat: { ...((m.compat as Record<string, unknown> | undefined) ?? {}), thinkingFormat: "deepseek" as const } } : {}),
+      // supportsDeveloperRole=false：上面的 reasoning=true 会让 pi-ai 走
+      // useDeveloperRole = model.reasoning && compat.supportsDeveloperRole，把系统提示词
+      // 发成 role:"developer"（OpenAI 新规范）。DeepSeek 端点只认 system，否则 400
+      // "unknown variant `developer`"。detectCompat 认不出自建 baseUrl 会默认给 true，须显式关。
+      ...(isDeepSeek
+        ? {
+            compat: {
+              ...((m.compat as Record<string, unknown> | undefined) ?? {}),
+              thinkingFormat: "deepseek" as const,
+              supportsDeveloperRole: false,
+            },
+          }
+        : {}),
     } as Model<typeof model.api>;
 
     opts.log?.(
@@ -92,11 +104,11 @@ export function createDirectStreamFn(opts: CreateDirectStreamFnOptions): StreamF
       // 计装（direct 直连无 onLlmRequestStart 配线，故内联打点，实测「请求是否真发出/是否有响应」）：
       // onPayload 在 fetch 前触发，onResponse 在 HTTP 响应头到达时触发。链上已有的
       // onPayload/onResponse（若有）先调用再透传，不吞掉调用方回调。
-      onPayload: (async (params: unknown, mdl: unknown) => {
+      onPayload: ((params: unknown, mdl: unknown) => {
         opts.log?.(`[direct-stream] HTTP 请求即将发出 model=${effectiveModel.id} baseUrl=${effectiveModel.baseUrl || "(none)"}`);
         return (options?.onPayload as ((p: unknown, m: unknown) => unknown) | undefined)?.(params, mdl);
       }) as NonNullable<typeof options>["onPayload"],
-      onResponse: (async (resp: { status?: number }, mdl: unknown) => {
+      onResponse: ((resp: { status?: number }, mdl: unknown) => {
         opts.log?.(`[direct-stream] 收到 HTTP 响应 status=${resp?.status ?? "?"} model=${effectiveModel.id}`);
         return (options?.onResponse as ((r: unknown, m: unknown) => unknown) | undefined)?.(resp, mdl);
       }) as NonNullable<typeof options>["onResponse"],
