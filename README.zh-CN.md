@@ -16,6 +16,63 @@ Lumo 通过自然对话，帮孩子探索 **无代码编程、音乐、数据、
 > Lumo 脱胎于一个内部项目，被重构为一个专注、自包含的学习伙伴。"宠物"角色只是它的
 > 外表 —— 内核是一位能干的老师和玩伴。
 
+## 界面速览
+
+起因是女儿的一句话：*"爸爸，我怎么看不见 ta 呀？ta 长什么样？能不能出来和我一起玩儿？"*
+Lumo 就是这个回答 —— 一个能看见、能戳、能说话、能一起编游戏的伙伴。
+
+### 真的"在那儿"的角色
+
+会眨眼、有表情，戳一下有反应。形象、声音、场景都能换。
+
+| 触摸互动 | 换形象 / 换声音 / 换场景 |
+| --- | --- |
+| <img src="docs/assets/screenshots/character-touch.jpg" width="260" /> | <img src="docs/assets/screenshots/character-switch.jpg" width="260" /> |
+
+### 像打电话一样聊天
+
+按住就说，随时打断。语音是主界面 —— 孩子张嘴要一个游戏或一张画，Agent 当场就做，
+孩子看着它长出来。
+
+<img src="docs/assets/screenshots/voice-chat.jpg" width="260" />
+
+### 孩子自己"想"出来的游戏
+
+这些游戏不是内置的。孩子用嘴描述，Agent 现场生成；说一句"改一改"，它就重做一版。
+
+| 「警察抓小偷」 | 「小猫推箱子」 |
+| --- | --- |
+| <img src="docs/assets/screenshots/game-cops-and-robbers.jpg" width="260" /> | <img src="docs/assets/screenshots/game-sokoban.jpg" width="260" /> |
+
+### 学习内容走的是同一条管道
+
+认字、拼音、算术和游戏用的是同一套动态内容生成 —— 练习出现在对话中间，而不是另开一个
+"上课"页面。
+
+| 认字学拼音 | 快乐学数学 | 想画什么就画 |
+| --- | --- | --- |
+| <img src="docs/assets/screenshots/learn-pinyin.jpg" width="260" /> | <img src="docs/assets/screenshots/learn-math.jpg" width="260" /> | <img src="docs/assets/screenshots/drawing.jpg" width="260" /> |
+
+每张画都会附一小段故事，并存进本地画册。儿童安全的提示词包装做在工具层，不是写在系统
+提示词里靠模型自觉。
+
+### 它记得在和谁说话
+
+名字、年龄、喜欢、不喜欢、性格 —— 存在设备本机，注入对话，随时可清空。画、游戏、聊天
+记录各有独立的删除入口。
+
+| 小主人记忆 | 记录与偏好 |
+| --- | --- |
+| <img src="docs/assets/screenshots/settings-memory.jpg" width="260" /> | <img src="docs/assets/screenshots/settings-kid.jpg" width="260" /> |
+
+### 模型配置在家长手里
+
+对话模型和生图模型分开配置 —— 各自选协议（对话 OpenAI / Anthropic，生图 OpenAI /
+Gemini）、填任意接口地址、用你自己的 Key。想要零外发，把对话指向本地模型即可。整个面板藏在家长专区里，需要连续双击才能打开，
+好奇的小孩点不进去。
+
+<img src="docs/assets/screenshots/settings-parent.png" width="260" />
+
 ## 工作原理
 
 ```
@@ -275,6 +332,17 @@ pnpm test        # 运行单元测试
 
 - **自定义角色与语音包** —— 换入更多 Live2D 模型与语音，让家庭挑到孩子喜欢的伙伴。
 - **技能与内容扩展** —— 一套干净的扩展模型，用于新增学习活动、小游戏和学科包。
+
+## 交流群
+
+装不上、模型怎么配、后面要做什么 —— 都欢迎来群里聊。带娃的家长和写代码的同行都欢迎。
+
+**QQ 群：1102925294**（扫码加入）
+
+<img src="docs/assets/qq-group.jpg" width="240" />
+
+习惯用 GitHub 的话，也可以直接开 [issue](../../issues) 或
+[discussion](../../discussions)。
 
 ## 隐私
 

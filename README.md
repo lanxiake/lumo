@@ -19,6 +19,68 @@ music, data, languages, games, and drawing** through natural conversation.
 > self-contained learning companion. The "pet" character is just the face — the
 > heart is a capable tutor and playmate.
 
+## See it in action
+
+It started with a question from my daughter: *"Dad, why can't I see her? What
+does she look like? Can she come out and play with me?"* Lumo is the answer —
+a companion a child can see, poke, talk to, and invent games with.
+
+### A character that's actually there
+
+Blinks, emotes, and reacts when poked. Swap the model, the voice, and the scene.
+
+| Touch & react | Different character, voice & scene |
+| --- | --- |
+| <img src="docs/assets/screenshots/character-touch.jpg" width="260" /> | <img src="docs/assets/screenshots/character-switch.jpg" width="260" /> |
+
+### Talk to it like a phone call
+
+Press to speak, interrupt any time. Voice is the main interface — the child asks
+for a game or a picture out loud, and the agent builds it while they watch.
+
+<img src="docs/assets/screenshots/voice-chat.jpg" width="260" />
+
+### Games the child invents
+
+These weren't shipped with the app. The child described them out loud and the
+agent generated them on the spot — then rebuilt them on "change it a bit."
+
+| "Cops and robbers" | "Kitten sokoban" |
+| --- | --- |
+| <img src="docs/assets/screenshots/game-cops-and-robbers.jpg" width="260" /> | <img src="docs/assets/screenshots/game-sokoban.jpg" width="260" /> |
+
+### Learning, generated the same way
+
+Reading, pinyin, and arithmetic come out of the same dynamic-content pipeline —
+so practice arrives mid-conversation instead of as a separate "lesson" screen.
+
+| Pinyin & characters | Math | Drawing on request |
+| --- | --- | --- |
+| <img src="docs/assets/screenshots/learn-pinyin.jpg" width="260" /> | <img src="docs/assets/screenshots/learn-math.jpg" width="260" /> | <img src="docs/assets/screenshots/drawing.jpg" width="260" /> |
+
+Every drawing comes back with a short story about it, and lands in a local
+gallery. Prompts are wrapped child-safe in the tool layer, not in a system prompt.
+
+### It remembers who it's talking to
+
+Name, age, likes, dislikes, personality — stored on-device, injected into the
+conversation, and erasable at any time. Drawings, games, and chat history each
+have their own delete path.
+
+| Personal memory | Records & preferences |
+| --- | --- |
+| <img src="docs/assets/screenshots/settings-memory.jpg" width="260" /> | <img src="docs/assets/screenshots/settings-kid.jpg" width="260" /> |
+
+### Parents own the model config
+
+Chat model and image model are configured separately — pick the protocol
+(OpenAI / Anthropic for chat, OpenAI / Gemini for images), point it at any base
+URL, use your own key. Point chat at a local model if you want zero egress. The
+whole panel sits behind a double-tap parent gate so a curious kid can't wander
+into it.
+
+<img src="docs/assets/screenshots/settings-parent.png" width="260" />
+
 ## How it works
 
 ```
@@ -325,6 +387,18 @@ Open the character and its capabilities up to the community.
   so families can pick a companion the child bonds with.
 - **Skills & content extensions** — a clean extension model for adding new learning
   activities, mini-games, and subject packs.
+
+## Community
+
+Questions about setup, model configuration, or where the project is heading —
+come talk to us. Parents and developers both welcome.
+
+**QQ group: 1102925294** (scan to join)
+
+<img src="docs/assets/qq-group.jpg" width="240" />
+
+Prefer GitHub? Open an [issue](../../issues) or start a
+[discussion](../../discussions).
 
 ## Privacy
 

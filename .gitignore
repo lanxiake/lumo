@@ -31,6 +31,9 @@ app/ios/*.xcworkspace/xcuserdata/
 # nodejs-mobile bundle (generated at build)
 app/nodejs-assets/nodejs-project/
 
+# 排障期临时产物（bundle 分析副本等）
+app/tmp/
+
 # Sherpa ONNX models (downloaded via setup:sherpa, too large to commit)
 app/assets/sherpa/**/*.onnx
 app/assets/sherpa/**/*.bin
