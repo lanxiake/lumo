@@ -107,6 +107,9 @@ export async function createPetSession(deps: PetSessionDeps): Promise<PetSession
     permissionMemory: deps.permissionMemory,
     osInfo: "kids-mobile",
     runtimeInfo: { agentId: def.id, host: "kids-mobile", channel: "kids-mobile" },
+    // 桌面向的长段落（工具选择优先级、三段式进度汇报、自我学习、安全长版）与
+    // 「2-4 句 ≤60 汉字儿童口语」直接冲突，会冲淡儿童提示词的动手指令。
+    promptDetail: "compact",
     isSubAgent: false,
     // 保持 contextWindow 缺省（AgentInstance 默认 1M）；只补齐摘要生成器，
     // 让压缩产出「LLM 摘要 + 最近 6 轮（DEFAULT_KEEP_RECENT_TURNS）」而非占位丢弃。

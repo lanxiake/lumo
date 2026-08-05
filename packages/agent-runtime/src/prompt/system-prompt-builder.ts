@@ -391,6 +391,18 @@ const TOOL_SUMMARIES: Record<string, string> = {
 
   // Task Completion
   task_complete: "Signal that the task is fully done — provide a brief summary of what was accomplished. MUST be called to mark task completion.",
+
+  // Kids App Tools (mobile companion app)
+  create_web_playground:
+    "Create or update a self-contained interactive HTML page (game/app) for the child. Pass `type`, `title` and a detailed `description` (gameplay, buttons, colors, no reading barrier) and LEAVE `html` EMPTY — the backend generates it asynchronously and returns {ok:true,status:'generating'}. Reuse the same `title` to update an existing creation in place instead of creating a new one.",
+  list_my_creations:
+    "List the built-in game library plus the child's own images and games (each with an id) — call this before creating anything new so existing content can be reused",
+  open_creation: "Open an existing creation by the id returned from list_my_creations — the ONLY way to open a game",
+  get_edit_target: "Fetch the original HTML of an existing creation so it can be modified — call before regenerating a tweaked version",
+  update_child_profile: "Update the child's profile (nickname, age, interests) when they tell you something worth remembering",
+  app_navigate: "Switch the app to another screen",
+  app_play_sound: "Play a short sound effect",
+  app_show_toast: "Show a large-text on-screen toast",
 }
 
 const FILE_TOOLS = new Set(["file_read", "file_write", "file_edit", "glob", "grep"])
@@ -435,6 +447,16 @@ const AGENT_MANAGEMENT_TOOLS = new Set([
   "agent_remove",
 ])
 const TASK_COMPLETION_TOOLS = new Set(["task_complete"])
+const KIDS_APP_TOOLS = new Set([
+  "create_web_playground",
+  "list_my_creations",
+  "open_creation",
+  "get_edit_target",
+  "update_child_profile",
+  "app_navigate",
+  "app_play_sound",
+  "app_show_toast",
+])
 
 function categorizeTools(toolNames: readonly string[]): string[] {
   const lines: string[] = []
@@ -452,6 +474,7 @@ function categorizeTools(toolNames: readonly string[]): string[] {
     { label: "Client Commands", tools: CLIENT_COMMAND_TOOLS },
     { label: "Agent Management", tools: AGENT_MANAGEMENT_TOOLS },
     { label: "Task Completion", tools: TASK_COMPLETION_TOOLS },
+    { label: "Kids App Tools", tools: KIDS_APP_TOOLS },
   ]
 
   for (const group of groups) {
@@ -469,7 +492,7 @@ function categorizeTools(toolNames: readonly string[]): string[] {
   // Other tools (not in any predefined group)
   const knownTools = new Set([
     ...FILE_TOOLS, ...COMMAND_TOOLS, ...MEDIA_GENERATION_TOOLS, ...TASK_TOOLS, ...AGENT_TOOLS,
-    ...SCHEDULING_TOOLS, ...GUIDE_TOOLS, ...BACKEND_SERVICE_TOOLS, ...BROWSER_TOOLS, ...CLIENT_COMMAND_TOOLS, ...AGENT_MANAGEMENT_TOOLS, ...TASK_COMPLETION_TOOLS,
+    ...SCHEDULING_TOOLS, ...GUIDE_TOOLS, ...BACKEND_SERVICE_TOOLS, ...BROWSER_TOOLS, ...CLIENT_COMMAND_TOOLS, ...AGENT_MANAGEMENT_TOOLS, ...TASK_COMPLETION_TOOLS, ...KIDS_APP_TOOLS,
   ])
   const otherTools = toolNames.filter((t) => !knownTools.has(t))
   if (otherTools.length > 0) {
@@ -1174,7 +1197,8 @@ function buildMessagingSection(params: {
   toolNames: readonly string[];
   runtimeChannel?: string;
 }): string[] {
-  if (!params.toolNames.includes("message")) {
+  // kids-mobile 走语音直答，不做渠道投递；这里的 NO_REPLY 会造成空轮。
+  if (!params.toolNames.includes("message") || params.runtimeChannel === "kids-mobile") {
     return []
   }
   const lines: string[] = [
@@ -1560,7 +1584,9 @@ function buildDeviceRoutingSection(toolNames: readonly string[]): string[] {
  * Build the Silent Replies section (NO_REPLY protocol).
  * Instructs the agent to return NO_REPLY when no user-visible response is needed.
  */
-function buildSilentRepliesSection(): string[] {
+function buildSilentRepliesSection(runtimeChannel?: string): string[] {
+  // 纯语音陪伴场景每轮都必须有声回应，NO_REPLY 会变成孩子等不到回答的空轮。
+  if (runtimeChannel === "kids-mobile") return []
   return [
     "## Silent Replies",
     "When you have nothing to say, respond with ONLY `NO_REPLY` (entire message, no wrapping, never append to real replies).",
@@ -2014,7 +2040,7 @@ export function buildClientSystemPromptStructured(params: ClientSystemPromptPara
   // staticLines.push(...buildA2UISection(effectiveToolNames))
 
   // === 12. Silent Replies（NO_REPLY 协议） ===
-  staticLines.push(...buildSilentRepliesSection())
+  staticLines.push(...buildSilentRepliesSection(runtimeChannel))
 
   // ========== 动态部分（每轮可能变化） ==========
   const dynamicLines: string[] = []

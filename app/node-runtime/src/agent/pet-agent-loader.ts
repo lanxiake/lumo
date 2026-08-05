@@ -39,5 +39,8 @@ export function hardenForMobile(def: AgentDefinition): AgentDefinition {
     permissionMode: "default",
     canSpawnSubAgents: false,
     disallowedTools: merged,
+    // 内建 assistant 的 personality（=== Role ===，讲 spawn_agent/explore-plan-verify）
+    // 在移动端全是死指令，会挤占并冲淡儿童提示词。
+    personality: undefined,
   };
 }

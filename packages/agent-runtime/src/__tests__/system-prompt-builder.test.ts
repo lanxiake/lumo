@@ -77,3 +77,45 @@ describe("buildClientSystemPromptStructured — 能力驱动条件注入", () =>
     expect(dynamicPrompt).toContain("memory_read");
   });
 });
+
+describe("buildClientSystemPromptStructured — kids-mobile compact", () => {
+  /** 与 app/node-runtime MOBILE_SAFE_TOOL_NAMES 对齐 */
+  const MOBILE_TOOLS = [
+    "message",
+    "task_complete",
+    "image_generate",
+    "create_web_playground",
+    "app_navigate",
+    "app_play_sound",
+    "app_show_toast",
+    "list_my_creations",
+    "open_creation",
+    "get_edit_target",
+    "update_child_profile",
+    "web_search",
+    "web_fetch",
+  ];
+
+  const build = () =>
+    buildClientSystemPromptStructured({
+      agentDefinition: BASE_DEF,
+      toolNames: MOBILE_TOOLS,
+      cwd: "/workspace",
+      promptDetail: "compact",
+      runtimeInfo: { agentId: BASE_DEF.id, host: "kids-mobile", channel: "kids-mobile" },
+    }).fullPrompt;
+
+  it("不注入移动端禁用/无关的桌面指令", () => {
+    const prompt = build();
+    for (const needle of ["spawn_agent", "file_read", "rm -rf", "NO_REPLY", "### Other Tools"]) {
+      expect(prompt).not.toContain(needle);
+    }
+  });
+
+  it("注入 create_web_playground 参数契约", () => {
+    const prompt = build();
+    expect(prompt).toContain("### Kids App Tools");
+    expect(prompt).toContain("create_web_playground");
+    expect(prompt).toContain("LEAVE `html` EMPTY");
+  });
+});
