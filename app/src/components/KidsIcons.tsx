@@ -455,6 +455,71 @@ export function LockIcon({ size = 16, color = t.colors.ink, style }: IconProps):
   );
 }
 
+/** 四宫格菜单（主舞台工具展开入口） */
+export function MenuGridIcon({ size = 18, color = t.colors.ink, style }: IconProps): React.JSX.Element {
+  const dot = Math.max(3, size * 0.22);
+  const gap = size * 0.16;
+  return (
+    <View
+      style={[
+        {
+          width: size,
+          height: size,
+          flexDirection: "row",
+          flexWrap: "wrap",
+          alignItems: "center",
+          justifyContent: "center",
+          gap,
+          padding: size * 0.08,
+        },
+        style,
+      ]}
+    >
+      {[0, 1, 2, 3].map((i) => (
+        <View
+          key={i}
+          style={{
+            width: dot,
+            height: dot,
+            borderRadius: 3,
+            backgroundColor: color,
+          }}
+        />
+      ))}
+    </View>
+  );
+}
+
+/** 关闭（X） */
+export function CloseIcon({ size = 16, color = t.colors.ink, style }: IconProps): React.JSX.Element {
+  const bar = size * 0.12;
+  const len = size * 0.72;
+  return (
+    <View style={[{ width: size, height: size, alignItems: "center", justifyContent: "center" }, style]}>
+      <View
+        style={{
+          position: "absolute",
+          width: len,
+          height: bar,
+          borderRadius: 1,
+          backgroundColor: color,
+          transform: [{ rotate: "45deg" }],
+        }}
+      />
+      <View
+        style={{
+          position: "absolute",
+          width: len,
+          height: bar,
+          borderRadius: 1,
+          backgroundColor: color,
+          transform: [{ rotate: "-45deg" }],
+        }}
+      />
+    </View>
+  );
+}
+
 const iconStyles = StyleSheet.create({
   kbBody: {
     width: 40,

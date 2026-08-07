@@ -6,7 +6,8 @@
 
 import React, { useState } from "react";
 import { Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
-import { kidsTheme as t } from "../../theme/kidsTheme";
+import { BackIcon } from "../../components/KidsIcons";
+import { kidsTheme as t, themeStyles as ts } from "../../theme/kidsTheme";
 
 export interface PetOption {
   readonly id: string;
@@ -35,7 +36,8 @@ export function PetSelectionScreen(props: PetSelectionScreenProps): React.JSX.El
           <Text style={styles.title}>选择小伙伴</Text>
           <Text style={styles.subtitle}>选一个一起玩吧</Text>
         </View>
-        <TouchableOpacity style={styles.closeBtn} onPress={props.onClose} activeOpacity={0.7}>
+        <TouchableOpacity style={styles.closeBtn} onPress={props.onClose} activeOpacity={0.75}>
+          <BackIcon size={14} color={t.colors.ink} />
           <Text style={styles.closeText}>返回</Text>
         </TouchableOpacity>
       </View>
@@ -129,10 +131,9 @@ function PetCard(props: {
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    backgroundColor: t.colors.paper,
+    ...ts.screen,
     paddingTop: 16,
-    paddingHorizontal: 16,
+    paddingHorizontal: t.space.screenX,
   },
   header: {
     flexDirection: "row",
@@ -142,27 +143,16 @@ const styles = StyleSheet.create({
   },
   title: {
     color: t.colors.ink,
-    fontSize: 22,
+    fontSize: t.font.title,
     fontWeight: "800",
   },
   subtitle: {
     color: t.colors.cloudGray,
-    fontSize: 12,
+    fontSize: t.font.section,
     marginTop: 2,
   },
-  closeBtn: {
-    backgroundColor: t.colors.paper,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderWidth: 1,
-    borderColor: t.colors.cinnabarSoft,
-  },
-  closeText: {
-    color: t.colors.cinnabar,
-    fontSize: 14,
-    fontWeight: "700",
-  },
+  closeBtn: { ...ts.btnGhost },
+  closeText: { ...ts.btnGhostText },
   grid: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -171,21 +161,17 @@ const styles = StyleSheet.create({
   card: {
     width: "47%",
     aspectRatio: 0.92,
-    borderRadius: 20,
-    backgroundColor: t.colors.paper,
+    borderRadius: t.radius.card,
+    backgroundColor: t.colors.surfaceElevated,
     borderWidth: 1,
-    borderColor: t.colors.softGoldBorder,
+    borderColor: t.colors.glassBorder,
     alignItems: "center",
     justifyContent: "center",
     padding: 12,
-    shadowColor: t.colors.ink,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 3,
+    ...t.shadow.card,
   },
   cardActive: {
-    borderColor: t.colors.cinnabar,
+    borderColor: t.colors.coral,
     borderWidth: 2.5,
   },
   cardLocked: {
@@ -224,14 +210,14 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     paddingVertical: 4,
     paddingHorizontal: 8,
-    backgroundColor: t.colors.paperDeep,
-    borderRadius: 8,
+    backgroundColor: t.colors.surfaceInput,
+    borderRadius: t.radius.sm,
     borderWidth: 1,
-    borderColor: t.colors.softGoldBorder,
+    borderColor: t.colors.inputBorder,
   },
   nameSaveBtn: {
-    backgroundColor: t.colors.cinnabar,
-    borderRadius: 8,
+    backgroundColor: t.colors.coral,
+    borderRadius: t.radius.sm,
     paddingHorizontal: 10,
     paddingVertical: 5,
   },
@@ -259,7 +245,7 @@ const styles = StyleSheet.create({
   },
   currentBadge: {
     marginTop: 6,
-    backgroundColor: t.colors.cinnabar,
+    backgroundColor: t.colors.coral,
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 3,

@@ -1,11 +1,11 @@
 /**
- * ChatControls — 儿童友好底部交互控制栏（国风暖纸笺）
+ * ChatControls — Soft Pop 底部交互控制栏
  *
  * 常驻输入框 + 右侧单按钮：
- *   - 输入框有内容 → 发送按钮
- *   - 输入框为空 → 电话按钮（单击进入通话）
+ *   - 有内容 → 发送
+ *   - 为空 → 电话（沿用 PhoneIcon / phone.png，仅调整按钮样式）
  *
- * 通话面板扁平排列：静音 / 打断 / 挂断。图标为 View 矢量，无 emoji。
+ * 通话面板：静音 / 打断 / 挂断（沿用原有矢量图标）。
  */
 
 import React from "react";
@@ -112,8 +112,7 @@ export function ChatControls(props: ChatControlsProps): React.JSX.Element {
 }
 
 /**
- * 常驻输入栏：输入框 + 右侧单按钮
- * 有内容→发送（朱砂）；为空→电话（单击进入通话）
+ * 输入栏：胶囊输入 + 右侧电话/发送（电话图标保持 phone.png）
  */
 function InputBar(props: {
   readonly input: string;
@@ -128,7 +127,7 @@ function InputBar(props: {
   const { input, onChangeInput, onSend, onCall, placeholder, editable, reasonHint, fontSize } =
     props;
   const hasText = input.trim().length > 0;
-  /* 按钮随字号缩放：手机 ~44，平板更大，与输入框视觉齐高 */
+  /* 与改版前一致：手机约 44，平板随字号放大 */
   const btnSize = fontSize(44);
   const iconSize = Math.round(btnSize * (hasText ? 0.4 : 0.45));
 
@@ -154,6 +153,7 @@ function InputBar(props: {
         onPress={editable ? (hasText ? onSend : onCall) : undefined}
         activeOpacity={editable ? 0.7 : 1}
         disabled={!editable}
+        accessibilityLabel={hasText ? "发送" : "打电话"}
       >
         {hasText ? (
           <SendIcon size={iconSize} color="#FFFFFF" />
@@ -165,7 +165,7 @@ function InputBar(props: {
   );
 }
 
-/** 通话面板：扁平一排 静音 / 打断 / 挂断（状态由上方状态条展示） */
+/** 通话面板：沿用原有 Mic / Interrupt / Hangup 图标与布局 */
 function PhoneCallPanel(props: {
   readonly micMuted: boolean;
   readonly aiReplying: boolean;
@@ -244,18 +244,23 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: t.colors.paperDeep,
+    backgroundColor: "rgba(255, 255, 255, 0.82)",
     borderWidth: 1.5,
     borderColor: t.colors.softGoldBorder,
     alignItems: "center",
     justifyContent: "center",
+    shadowColor: t.colors.ink,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 2,
   },
   callSideBtnMuted: {
     backgroundColor: t.colors.cinnabar,
     borderColor: t.colors.cinnabar,
   },
   callSideBtnDisabled: {
-    backgroundColor: t.colors.paperDeep,
+    backgroundColor: "rgba(255, 255, 255, 0.55)",
     borderColor: t.colors.softGoldBorder,
     opacity: 0.45,
   },
@@ -272,6 +277,11 @@ const styles = StyleSheet.create({
     borderColor: t.colors.cinnabar,
     alignItems: "center",
     justifyContent: "center",
+    shadowColor: t.colors.cinnabar,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.28,
+    shadowRadius: 8,
+    elevation: 3,
   },
   callActionLabel: {
     color: t.colors.cloudGray,
@@ -288,18 +298,24 @@ const styles = StyleSheet.create({
   },
   textInput: {
     flex: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    backgroundColor: t.colors.paperDeep,
-    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: t.colors.inputBg,
+    borderRadius: t.radius.pill,
     borderWidth: 1,
-    borderColor: t.colors.softGoldBorder,
+    borderColor: t.colors.inputBorder,
     color: t.colors.ink,
+    fontWeight: "600",
   },
   trailingBtn: {
     borderWidth: 1.5,
     alignItems: "center",
     justifyContent: "center",
+    shadowColor: t.colors.ink,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.14,
+    shadowRadius: 8,
+    elevation: 3,
   },
   trailingBtnSend: {
     backgroundColor: t.colors.cinnabar,
@@ -312,13 +328,14 @@ const styles = StyleSheet.create({
   trailingBtnDisabled: {
     backgroundColor: "rgba(180, 170, 160, 0.45)",
     borderColor: "rgba(160, 150, 140, 0.35)",
+    shadowOpacity: 0,
   },
   interruptBtn: {
     alignSelf: "center",
     marginBottom: 8,
     paddingHorizontal: 16,
     paddingVertical: 8,
-    borderRadius: 16,
+    borderRadius: t.radius.pill,
     backgroundColor: t.colors.cinnabarSoft,
     borderWidth: 1,
     borderColor: t.colors.cinnabar,

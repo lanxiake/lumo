@@ -1,4 +1,4 @@
-/**
+﻿/**
  * SettingsScreen — 设置菜单
  *
  * 卡片化布局、大图标、分区清晰。支持：我的画、我的游戏、
@@ -8,7 +8,7 @@
 import React, { useEffect, useState } from "react";
 import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import type { ChildProfile, ImageProviderConfig, ImageProviderKind, ProviderConfig } from "../../../node-runtime/src/bridge/schema";
-import { kidsTheme as t } from "../../theme/kidsTheme";
+import { kidsTheme as t, themeStyles as ts } from "../../theme/kidsTheme";
 import {
   BackIcon,
   ChatIcon,
@@ -96,9 +96,12 @@ export function SettingsScreen(props: SettingsScreenProps): React.JSX.Element {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>设置</Text>
-        <TouchableOpacity style={styles.closeBtn} onPress={onClose} activeOpacity={0.7}>
-          <BackIcon size={14} color={t.colors.cinnabar} />
+        <View style={styles.titleBlock}>
+          <Text style={styles.title}>设置</Text>
+          <View style={styles.titleAccent} />
+        </View>
+        <TouchableOpacity style={styles.closeBtn} onPress={onClose} activeOpacity={0.75}>
+          <BackIcon size={14} color={t.colors.ink} />
           <Text style={styles.closeText}>返回</Text>
         </TouchableOpacity>
       </View>
@@ -106,19 +109,19 @@ export function SettingsScreen(props: SettingsScreenProps): React.JSX.Element {
       <ScrollView showsVerticalScrollIndicator contentContainerStyle={styles.scrollContent}>
         <Text style={styles.sectionTitle}>记录</Text>
         <Card
-          icon={<GalleryIcon size={22} color={t.colors.ink} />}
+          icon={<GalleryIcon size={20} color={t.colors.coral} />}
           label="我的画"
           hint="查看历史生成的图片"
           onPress={() => onNavigate?.("gallery")}
         />
         <Card
-          icon={<GameIcon size={22} color={t.colors.ink} />}
+          icon={<GameIcon size={20} color={t.colors.coral} />}
           label="我的游戏"
           hint="查看玩过的小游戏"
           onPress={() => onNavigate?.("game_history")}
         />
         <Card
-          icon={<ChatIcon size={22} color={t.colors.ink} />}
+          icon={<ChatIcon size={20} color={t.colors.coral} />}
           label="聊天记录"
           hint="回顾和宠物的对话"
           onPress={() => onNavigate?.("chat_history")}
@@ -126,7 +129,7 @@ export function SettingsScreen(props: SettingsScreenProps): React.JSX.Element {
 
         <Text style={styles.sectionTitle}>偏好</Text>
         <Card
-          icon={<PawIcon size={22} color={t.colors.ink} />}
+          icon={<PawIcon size={20} color={t.colors.coral} />}
           label="默认宠物"
           hint={`当前：${defaultPetLabel}`}
           onPress={() => onNavigate?.("pet_selection")}
@@ -171,7 +174,7 @@ export function SettingsScreen(props: SettingsScreenProps): React.JSX.Element {
             高级设置{advancedOpen ? "" : "（家长专区·连续双击打开）"}
           </Text>
           <View style={{ flex: 1 }} />
-          <ChevronIcon size={14} color={t.colors.cinnabar} />
+          <ChevronIcon size={14} color={t.colors.cloudGray} />
         </TouchableOpacity>
 
         {advancedOpen && (
@@ -192,7 +195,7 @@ export function SettingsScreen(props: SettingsScreenProps): React.JSX.Element {
 
             <Text style={styles.sectionTitle}>诊断</Text>
             <Card
-              icon={<ChevronIcon size={22} color={t.colors.ink} />}
+              icon={<ChevronIcon size={18} color={t.colors.coral} />}
               label="系统日志"
               hint="查看运行/错误/性能日志，可导出"
               onPress={() => onNavigate?.("system_logs")}
@@ -213,7 +216,7 @@ export function SettingsScreen(props: SettingsScreenProps): React.JSX.Element {
   );
 }
 
-/** 设置列表卡片（图标为 View 矢量，无 emoji） */
+/** Soft Pop 设置列表卡片 — 图标井统一珊瑚软底，不再分色 */
 function Card(props: {
   readonly icon: React.ReactNode;
   readonly label: string;
@@ -227,7 +230,7 @@ function Card(props: {
     <TouchableOpacity
       style={[styles.card, disabled && styles.cardDisabled]}
       onPress={onPress}
-      activeOpacity={0.7}
+      activeOpacity={0.75}
       disabled={disabled}
     >
       <View style={styles.cardIcon}>{icon}</View>
@@ -243,7 +246,7 @@ function Card(props: {
         </Text>
         <Text style={styles.cardHint}>{hint}</Text>
       </View>
-      {!disabled && <ChevronIcon size={14} color={t.colors.cinnabar} />}
+      {!disabled && <ChevronIcon size={13} color={t.colors.cloudGray} />}
     </TouchableOpacity>
   );
 }
@@ -796,72 +799,37 @@ function MemorySection(props: {
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    backgroundColor: t.colors.overlayBg,
+    ...ts.screen,
     paddingTop: 16,
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 4,
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: t.colors.cardBorder,
+    marginBottom: 8,
+    paddingHorizontal: 18,
+    paddingBottom: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.colors.hairline,
   },
-  title: { color: t.colors.text, fontSize: t.font.title, fontWeight: "800" },
-  closeBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    backgroundColor: t.colors.paper,
-    borderRadius: t.radius.sm,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderWidth: 1,
-    borderColor: t.colors.cinnabarSoft,
+  titleBlock: { flexShrink: 1 },
+  title: {
+    color: t.colors.text,
+    fontSize: t.font.title,
+    fontWeight: "800",
+    letterSpacing: 0.3,
   },
-  closeText: { color: t.colors.cinnabar, fontSize: t.font.label, fontWeight: "700" },
-  scrollContent: { paddingHorizontal: 16, paddingBottom: 48 },
-  sectionTitle: {
-    color: t.colors.cloudGray,
-    fontSize: t.font.section,
-    fontWeight: "700",
-    letterSpacing: 1,
-    marginTop: 20,
-    marginBottom: 10,
-    paddingLeft: 4,
-  },
-  card: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: t.colors.paper,
-    borderRadius: 18,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: t.colors.softGoldBorder,
-    shadowColor: t.colors.ink,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    elevation: 2,
-  },
+  titleAccent: { ...ts.titleAccent },
+  closeBtn: { ...ts.btnGhost },
+  closeText: { ...ts.btnGhostText },
+  scrollContent: { paddingHorizontal: t.space.screenX, paddingBottom: 48 },
+  sectionTitle: { ...ts.sectionTitle },
+  card: { ...ts.card },
   cardDisabled: {
-    backgroundColor: "rgba(243, 230, 212, 0.5)",
-    borderColor: t.colors.softGoldBorder,
+    backgroundColor: t.colors.surfaceMuted,
+    opacity: 0.75,
   },
-  cardIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    backgroundColor: t.colors.paperDeep,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 14,
-  },
+  cardIcon: { ...ts.iconWell },
   cardBody: { flex: 1 },
   cardLabel: { color: t.colors.ink, fontSize: t.font.body, fontWeight: "700", marginBottom: 3 },
   cardLabelDanger: { color: t.colors.cinnabar },
@@ -878,48 +846,30 @@ const styles = StyleSheet.create({
   voiceLabel: {
     color: t.colors.cloudGray,
     fontSize: t.font.section,
-    fontWeight: "700",
+    fontWeight: "800",
+    letterSpacing: 0.8,
   },
   voiceGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
   },
-  voiceChip: {
-    backgroundColor: t.colors.paper,
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderWidth: 1,
-    borderColor: t.colors.softGoldBorder,
-    minWidth: 82,
-    alignItems: "center",
-  },
-  voiceChipActive: {
-    backgroundColor: t.colors.cinnabar,
-    borderColor: t.colors.cinnabar,
-  },
-  voiceChipText: { color: t.colors.ink, fontSize: 15, fontWeight: "700" },
-  voiceChipHint: { color: t.colors.cloudGray, fontSize: 11, marginTop: 2 },
-  voiceChipTextActive: { color: t.colors.textOnAccent },
-  voiceChipHintActive: { color: t.colors.textOnAccent, opacity: 0.9 },
+  voiceChip: { ...ts.chip, minWidth: 82 },
+  voiceChipActive: { ...ts.chipActive },
+  voiceChipText: { ...ts.chipText },
+  voiceChipHint: { ...ts.chipHint },
+  voiceChipTextActive: { ...ts.chipTextActive },
+  voiceChipHintActive: { ...ts.chipHintActive },
   version: {
     color: t.colors.cloudGray,
     fontSize: 11,
     textAlign: "center",
     marginTop: 32,
+    opacity: 0.8,
   },
   advancedHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
+    ...ts.mutedBar,
     marginTop: 24,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderRadius: 14,
-    backgroundColor: t.colors.paperDeep,
-    borderWidth: 1,
-    borderColor: t.colors.softGoldBorder,
   },
   advancedHeaderText: {
     color: t.colors.cloudGray,
@@ -927,14 +877,8 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   parentHintBox: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
+    ...ts.mutedBar,
     marginTop: 28,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderRadius: 14,
-    backgroundColor: t.colors.paperDeep,
   },
   parentHint: {
     flex: 1,
@@ -942,13 +886,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
   },
-  memBox: {
-    backgroundColor: t.colors.paper,
-    borderRadius: 18,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: t.colors.softGoldBorder,
-  },
+  memBox: { ...ts.panel },
   memRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -960,93 +898,40 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     width: 64,
   },
-  memInput: {
-    flex: 1,
-    backgroundColor: t.colors.paperDeep,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    color: t.colors.ink,
-    fontSize: 14,
-    borderWidth: 1,
-    borderColor: t.colors.softGoldBorder,
-  },
+  memInput: { ...ts.input },
   genderRow: { flexDirection: "row", gap: 8, flex: 1 },
   genderChip: {
-    backgroundColor: t.colors.paperDeep,
-    borderRadius: 12,
-    paddingHorizontal: 14,
+    ...ts.chip,
     paddingVertical: 8,
-    borderWidth: 1,
-    borderColor: t.colors.softGoldBorder,
+    paddingHorizontal: 14,
   },
-  genderChipActive: {
-    backgroundColor: t.colors.teal,
-    borderColor: t.colors.teal,
-  },
-  genderChipText: { color: t.colors.cloudGray, fontSize: 14, fontWeight: "600" },
+  genderChipActive: { ...ts.chipActive },
+  genderChipText: { color: t.colors.ink, fontSize: 14, fontWeight: "600" },
   memClearHint: {
     color: t.colors.cinnabar,
     fontSize: 12,
     marginBottom: 8,
     paddingLeft: 2,
   },
-  fetchModelsBtn: {
-    borderRadius: t.radius.sm,
-    paddingVertical: 10,
-    marginBottom: 10,
-    backgroundColor: t.colors.paperDeep,
-    borderWidth: 1,
-    borderColor: t.colors.teal,
-    alignItems: "center",
-  },
+  fetchModelsBtn: { ...ts.btnOutline, marginBottom: 10 },
   fetchModelsBtnDisabled: {
-    borderColor: t.colors.softGoldBorder,
+    borderColor: t.colors.controlBorder,
     opacity: 0.5,
   },
-  fetchModelsText: { color: t.colors.teal, fontSize: 14, fontWeight: "700" },
+  fetchModelsText: { ...ts.btnOutlineText },
   modelChipGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
     marginBottom: 10,
   },
-  modelChip: {
-    backgroundColor: t.colors.paperDeep,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderWidth: 1,
-    borderColor: t.colors.softGoldBorder,
-  },
-  modelChipActive: {
-    backgroundColor: t.colors.cinnabar,
-    borderColor: t.colors.cinnabar,
-  },
+  modelChip: { ...ts.chip, paddingVertical: 8, paddingHorizontal: 12 },
+  modelChipActive: { ...ts.chipActive },
   modelChipText: { color: t.colors.ink, fontSize: 13, fontWeight: "600" },
   memActions: { flexDirection: "row", gap: 12, marginTop: 4 },
-  memClearBtn: {
-    flex: 1,
-    borderRadius: t.radius.sm,
-    paddingVertical: 11,
-    backgroundColor: "rgba(180, 160, 150, 0.2)",
-    borderWidth: 1,
-    borderColor: "rgba(180, 160, 150, 0.4)",
-    alignItems: "center",
-  },
-  memClearText: { color: t.colors.textSecondary, fontSize: 14, fontWeight: "600" },
-  memSaveBtn: {
-    flex: 2,
-    borderRadius: t.radius.sm,
-    paddingVertical: 11,
-    backgroundColor: t.colors.primary,
-    borderWidth: 1,
-    borderColor: t.colors.primary,
-    alignItems: "center",
-  },
-  memSaveText: { color: t.colors.textOnAccent, fontSize: 14, fontWeight: "700" },
-  memSaveBtnDisabled: {
-    backgroundColor: "rgba(180, 170, 160, 0.45)",
-    borderColor: "rgba(160, 150, 140, 0.35)",
-  },
+  memClearBtn: { ...ts.btnSecondary, flex: 1 },
+  memClearText: { ...ts.btnSecondaryText },
+  memSaveBtn: { ...ts.btnPrimary, flex: 2 },
+  memSaveText: { ...ts.btnPrimaryText },
+  memSaveBtnDisabled: { ...ts.btnPrimaryDisabled },
 });

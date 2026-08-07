@@ -1,13 +1,14 @@
 /**
- * KidsOverlayHeader — 暖纸笺 overlay 顶栏（与设置页一致）
+ * KidsOverlayHeader — Soft Pop overlay 顶栏
  *
- * 标题 + 朱砂「返回」按钮，供我的画 / 我的游戏 / 聊天记录等子页复用。
+ * 毛玻璃返回钮 + 清晰标题层级，供设置子页复用。
+ * 样式来自 themeStyles，与设置页保持同一色系。
  */
 
 import React from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { BackIcon } from "../../../components/KidsIcons";
-import { kidsTheme as t } from "../../../theme/kidsTheme";
+import { kidsTheme as t, themeStyles as ts } from "../../../theme/kidsTheme";
 
 export interface KidsOverlayHeaderProps {
   readonly title: string;
@@ -16,7 +17,7 @@ export interface KidsOverlayHeaderProps {
   readonly subtitle?: string;
 }
 
-/** 暖纸笺风格 overlay 顶栏 */
+/** Soft Pop 风格 overlay 顶栏 */
 export function KidsOverlayHeader(props: KidsOverlayHeaderProps): React.JSX.Element {
   const { title, onBack, subtitle } = props;
   return (
@@ -24,9 +25,10 @@ export function KidsOverlayHeader(props: KidsOverlayHeaderProps): React.JSX.Elem
       <View style={styles.titleBlock}>
         <Text style={styles.title}>{title}</Text>
         {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+        <View style={styles.titleAccent} />
       </View>
-      <TouchableOpacity style={styles.closeBtn} onPress={onBack} activeOpacity={0.7}>
-        <BackIcon size={14} color={t.colors.cinnabar} />
+      <TouchableOpacity style={styles.closeBtn} onPress={onBack} activeOpacity={0.75}>
+        <BackIcon size={14} color={t.colors.ink} />
         <Text style={styles.closeText}>返回</Text>
       </TouchableOpacity>
     </View>
@@ -38,30 +40,26 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 4,
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: t.colors.cardBorder,
+    marginBottom: 8,
+    paddingHorizontal: 18,
+    paddingBottom: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.colors.hairline,
   },
   titleBlock: { flexShrink: 1, paddingRight: 12 },
-  title: { color: t.colors.text, fontSize: t.font.title, fontWeight: "800" },
+  title: {
+    color: t.colors.text,
+    fontSize: t.font.title,
+    fontWeight: "800",
+    letterSpacing: 0.3,
+  },
   subtitle: {
     color: t.colors.cloudGray,
     fontSize: t.font.hint,
-    marginTop: 2,
+    marginTop: 3,
     fontWeight: "600",
   },
-  closeBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    backgroundColor: t.colors.paper,
-    borderRadius: t.radius.sm,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderWidth: 1,
-    borderColor: t.colors.cinnabarSoft,
-  },
-  closeText: { color: t.colors.cinnabar, fontSize: t.font.label, fontWeight: "700" },
+  titleAccent: { ...ts.titleAccent },
+  closeBtn: { ...ts.btnGhost },
+  closeText: { ...ts.btnGhostText },
 });

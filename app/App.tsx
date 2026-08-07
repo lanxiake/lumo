@@ -14,7 +14,6 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ActivityIndicator,
   Animated,
   SafeAreaView,
   StatusBar,
@@ -47,13 +46,7 @@ import { loadPetName, savePetName } from "./src/storage/petNamePersistence";
 import { SceneBackground, SCENES } from "./src/pet/SceneBackground";
 import { loadSceneId, saveSceneId } from "./src/storage/scenePersistence";
 import { kidsTheme as t } from "./src/theme/kidsTheme";
-import {
-  MinusIcon,
-  PlusIcon,
-  ResetIcon,
-  SceneIcon,
-  SettingsIcon,
-} from "./src/components/KidsIcons";
+import { FloatStageControls } from "./src/components/FloatStageControls";
 import type { MessageRow } from "./node-runtime/src/memory/local-session-memory";
 import { SharedPrefsStorage } from "./src/auth/secureStorage";
 import { resolveDeviceId, type DeviceIdStore } from "./src/auth/deviceIdentity";
@@ -1018,8 +1011,23 @@ function MainApp(props: MainAppProps): React.JSX.Element {
   const controlsEnabled = sessionReady && sttAvailable !== false;
 
   const statusLabel = useCallback((mode: ConversationMode, petState: PetState) => {
-    if (mode === "phone_call") return `通话中${petState === "listening" ? " · 聆听中" : ""}`;
-    return petState;
+    if (mode === "phone_call") {
+      return `通话中${petState === "listening" ? " · 聆听中" : ""}`;
+    }
+    switch (petState) {
+      case "idle":
+        return "在线";
+      case "listening":
+        return "聆听中";
+      case "thinking":
+        return "思考中";
+      case "tts_converting":
+        return "准备说话";
+      case "speaking":
+        return "说话中";
+      default:
+        return String(petState);
+    }
   }, []);
 
   // 忙碌提示：工具运行中优先显示具体动作（做小游戏…/画画…），否则按状态机给一句人话。
@@ -1074,49 +1082,29 @@ function MainApp(props: MainAppProps): React.JSX.Element {
         />
       </View>
 
-      {/* 右上角浮动控制：缩放 + 模型切换 + 设置（游戏页打开时隐藏，否则 Android 高 elevation 会截走游戏页触摸） */}
+      {/* Soft Pop 右侧浮动簇：设置 / 换形象 / 换场景 / ···缩放（游戏页打开时隐藏） */}
       {!playgroundOpen && (
-      <View style={[styles.floatZoom, isLandscape && styles.floatZoomLandscape]}>
-        <FloatBtn onPress={() => setPetScale((s) => Math.max(MIN_SCALE, +(s - 0.1).toFixed(2)))}>
-          <MinusIcon size={14} color={t.colors.ink} />
-        </FloatBtn>
-        <Text style={styles.zoomText}>{Math.round(petScale * 100)}%</Text>
-        <FloatBtn onPress={() => setPetScale((s) => Math.min(MAX_SCALE, +(s + 0.1).toFixed(2)))}>
-          <PlusIcon size={14} color={t.colors.ink} />
-        </FloatBtn>
-        <FloatBtn
-          onPress={() => {
+        <FloatStageControls
+          petScale={petScale}
+          onZoomOut={() => setPetScale((s) => Math.max(MIN_SCALE, +(s - 0.1).toFixed(2)))}
+          onZoomIn={() => setPetScale((s) => Math.min(MAX_SCALE, +(s + 0.1).toFixed(2)))}
+          onReset={() => {
             setPetScale(1.0);
             setModelOffset({ x: 0, y: 0 });
           }}
-        >
-          <ResetIcon size={14} color={t.colors.ink} />
-        </FloatBtn>
-        <TouchableOpacity
-          style={styles.modelBtn}
-          onPress={() => setModelIndex((i) => (i + 1) % AVAILABLE_MODEL_IDS.length)}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.modelBtnText}>{currentModelConfig.label}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.sceneBtn} onPress={cycleScene} activeOpacity={0.7}>
-          <SceneIcon size={14} color={t.colors.ink} />
-          <Text style={styles.sceneBtnText}>{currentScene.label}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.settingsBtn}
-          onPress={() => appActions.navigate("settings")}
-          activeOpacity={0.7}
-        >
-          <SettingsIcon size={16} color={t.colors.ink} />
-        </TouchableOpacity>
-      </View>
+          modelLabel={currentModelConfig.label}
+          onCycleModel={() => setModelIndex((i) => (i + 1) % AVAILABLE_MODEL_IDS.length)}
+          sceneLabel={currentScene.label}
+          onCycleScene={cycleScene}
+          onOpenSettings={() => appActions.navigate("settings")}
+          isLandscape={isLandscape}
+        />
       )}
 
-      {/* 忙碌状态胶囊：始终可见（即使聊天坞收起），让孩子知道宠物在思考/做游戏/画画 */}
+      {/* Soft Pop 忙碌胶囊：毛玻璃 + 青绿脉冲点 */}
       {petVisible && busyLabel && (
         <View style={[styles.busyPill, isLandscape && styles.busyPillLandscape]} pointerEvents="none">
-          <ActivityIndicator size="small" color="#FFFFFF" />
+          <View style={styles.busyDot} />
           <Text style={[styles.busyPillText, { fontSize: fs(13) }]} numberOfLines={1}>
             {busyLabel}
           </Text>
@@ -1166,16 +1154,16 @@ function MainApp(props: MainAppProps): React.JSX.Element {
             maxHeight={isLandscape ? Math.round(height * 0.42) : undefined}
           />
 
-          {/* 极简状态条 */}
+          {/* Soft Pop 状态条 */}
           <View style={styles.statusBar}>
             <View
               style={[
                 styles.statusDot,
-                conversationMode === "phone_call" && { backgroundColor: "#00F0FF" },
+                conversationMode === "phone_call" && { backgroundColor: t.colors.teal },
                 state === "idle" && conversationMode === "normal" && { backgroundColor: "#4ADE80" },
               ]}
             />
-            <Text style={[styles.statusText, { fontSize: fs(11) }]} numberOfLines={1}>
+            <Text style={[styles.statusText, { fontSize: fs(12) }]} numberOfLines={1}>
               {statusLabel(conversationMode, state)}
               {nodeReady ? "" : " · 启动中"}
               {!sessionReady && nodeReady ? " · 连接中" : ""}
@@ -1198,7 +1186,7 @@ function MainApp(props: MainAppProps): React.JSX.Element {
             enabled={controlsEnabled}
             sessionReady={sessionReady}
             sttAvailable={sttAvailable}
-            placeholder={sessionReady ? "和宠物说点什么…" : "会话建立中…"}
+            placeholder={sessionReady ? "想玩什么？跟我说～" : "会话建立中…"}
             fontSize={fs}
           />
         </Animated.View>
@@ -1409,154 +1397,65 @@ function AppOverlay(props: {
   }
 }
 
-/** 浮动小按钮（纸白圆钮 + 矢量图标） */
-function FloatBtn(props: {
-  readonly onPress: () => void;
-  readonly children: React.ReactNode;
-}): React.JSX.Element {
-  return (
-    <TouchableOpacity style={styles.floatBtn} onPress={props.onPress} activeOpacity={0.7}>
-      {props.children}
-    </TouchableOpacity>
-  );
-}
-
+/** Soft Pop 主舞台样式 */
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: t.colors.rootBg },
   stage: {
     flex: 1,
     overflow: "hidden",
   },
-  floatZoom: {
-    position: "absolute",
-    top: 48,
-    right: 10,
-    alignItems: "center",
-    gap: 8,
-    /* 抬到 hud(6) 之上，避免展开的聊天面板遮挡右侧按钮的点击 */
-    elevation: 8,
-    zIndex: 8,
-  },
-  /* 横屏屏高仅 ~369dp，压缩起点与间距，保证场景/设置按钮不出屏 */
-  floatZoomLandscape: {
-    top: 8,
-    gap: 3,
-  },
-  /* 忙碌胶囊：顶部居中悬浮，高 elevation 保证浮在场景/人物之上；pointerEvents none 不拦触摸 */
+  /* Soft Pop 忙碌胶囊：顶部居中毛玻璃 */
   busyPill: {
     position: "absolute",
-    top: 12,
+    top: 14,
     alignSelf: "center",
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: "rgba(58, 175, 169, 0.94)",
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    borderRadius: t.radius.pill,
+    backgroundColor: t.colors.busyPillBg,
+    borderWidth: 1,
+    borderColor: t.colors.glassBorder,
     shadowColor: t.colors.ink,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
     elevation: 10,
     zIndex: 10,
   },
   busyPillLandscape: {
     top: 6,
   },
+  busyDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: t.colors.teal,
+  },
   busyPillText: {
-    color: "#FFFFFF",
-    fontWeight: "700",
-  },
-  floatBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: t.colors.hudPaper,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: t.colors.floatBorder,
-    shadowColor: t.colors.ink,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  zoomText: {
     color: t.colors.ink,
-    fontSize: 10,
     fontWeight: "700",
+    letterSpacing: 0.2,
   },
-  modelBtn: {
-    minWidth: 44,
-    height: 28,
-    paddingHorizontal: 6,
-    borderRadius: 10,
-    backgroundColor: t.colors.hudPaper,
-    borderWidth: 1,
-    borderColor: t.colors.softGoldBorder,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 4,
-  },
-  modelBtnText: {
-    color: t.colors.ink,
-    fontSize: 10,
-    fontWeight: "700",
-  },
-  sceneBtn: {
-    minWidth: 44,
-    height: 32,
-    paddingHorizontal: 8,
-    borderRadius: 16,
-    backgroundColor: t.colors.hudPaper,
-    borderWidth: 1,
-    borderColor: t.colors.floatBorder,
-    alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "row",
-    gap: 4,
-    marginTop: 4,
-  },
-  sceneBtnText: {
-    color: t.colors.ink,
-    fontSize: 10,
-    fontWeight: "700",
-  },
-  settingsBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: t.colors.hudPaper,
-    borderWidth: 1,
-    borderColor: t.colors.floatBorder,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 8,
-    shadowColor: t.colors.ink,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  // 底部悬浮 HUD：暖纸笺
+  // Soft Pop 底部毛玻璃 HUD
   hud: {
     position: "absolute",
     left: 0,
     right: 0,
-    bottom: 6,
+    bottom: 8,
     backgroundColor: t.colors.hudPaper,
     borderRadius: t.radius.xl,
     borderWidth: 1,
-    borderColor: t.colors.softGoldBorder,
-    paddingTop: 4,
-    paddingBottom: 8,
-    marginHorizontal: 8,
+    borderColor: t.colors.hudBorder,
+    paddingTop: 6,
+    paddingBottom: 12,
+    marginHorizontal: 14,
     shadowColor: t.colors.ink,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.14,
-    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.16,
+    shadowRadius: 28,
     elevation: 6,
   },
   hudLandscape: {
@@ -1565,30 +1464,33 @@ const styles = StyleSheet.create({
   },
   hudToggle: {
     alignSelf: "center",
-    paddingHorizontal: 24,
-    paddingVertical: 2,
-    marginBottom: 2,
+    paddingHorizontal: 28,
+    paddingVertical: 4,
+    marginBottom: 4,
   },
   hudToggleText: {
-    color: t.colors.textMuted,
-    fontSize: 10,
+    color: "rgba(139, 122, 107, 0.55)",
+    fontSize: 9,
+    letterSpacing: 1,
   },
   statusBar: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 4,
-    gap: 5,
+    justifyContent: "flex-start",
+    marginBottom: 8,
+    marginHorizontal: 10,
+    gap: 8,
   },
   statusDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 3,
+    width: 7,
+    height: 7,
+    borderRadius: 4,
     backgroundColor: t.colors.primary,
   },
   statusText: {
     color: t.colors.textSecondary,
-    fontWeight: "500",
+    fontWeight: "700",
+    letterSpacing: 0.2,
   },
   overlay: {
     position: "absolute",

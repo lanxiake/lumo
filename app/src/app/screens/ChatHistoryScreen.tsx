@@ -216,22 +216,22 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginHorizontal: 6,
     borderWidth: 1,
-    borderColor: t.colors.softGoldBorder,
+    borderColor: t.colors.glassBorder,
   },
   bubble: {
     maxWidth: "70%",
-    borderRadius: 16,
+    borderRadius: t.radius.chip,
     paddingHorizontal: 14,
     paddingVertical: 10,
   },
   userBubble: {
-    backgroundColor: t.colors.cinnabar,
+    backgroundColor: t.colors.coral,
     borderBottomRightRadius: 4,
   },
   assistantBubble: {
-    backgroundColor: t.colors.paper,
+    backgroundColor: t.colors.surfaceElevated,
     borderWidth: 1,
-    borderColor: t.colors.softGoldBorder,
+    borderColor: t.colors.glassBorder,
     borderBottomLeftRadius: 4,
   },
   userText: {
@@ -251,7 +251,7 @@ const styles = StyleSheet.create({
     textAlign: "right",
   },
   timeOnAccent: {
-    color: "rgba(255, 255, 255, 0.75)",
+    color: t.colors.white75,
   },
   bottomPad: {
     height: 40,
@@ -265,7 +265,7 @@ const styles = StyleSheet.create({
   eventCard: {
     backgroundColor: t.colors.tealSoft,
     borderWidth: 1,
-    borderColor: "rgba(58, 175, 169, 0.35)",
+    borderColor: t.colors.tealOutline,
     borderRadius: 14,
     paddingHorizontal: 14,
     paddingVertical: 10,
@@ -290,11 +290,11 @@ const styles = StyleSheet.create({
   },
   toolCardDone: {
     backgroundColor: t.colors.tealSoft,
-    borderColor: "rgba(58, 175, 169, 0.4)",
+    borderColor: t.colors.tealOutlineStrong,
   },
   toolCardError: {
-    backgroundColor: "rgba(220, 120, 90, 0.12)",
-    borderColor: "rgba(220, 120, 90, 0.4)",
+    backgroundColor: t.colors.errorSoft,
+    borderColor: t.colors.errorOutline,
   },
   toolIcon: {
     fontSize: 16,
@@ -314,13 +314,13 @@ const styles = StyleSheet.create({
     backgroundColor: t.colors.primary,
   },
   toolBadgeDone: {
-    backgroundColor: "rgba(58, 175, 169, 0.9)",
+    backgroundColor: t.colors.tealSolid,
   },
   toolBadgeError: {
-    backgroundColor: "rgba(220, 120, 90, 0.9)",
+    backgroundColor: t.colors.errorSolid,
   },
   toolBadgeText: {
-    color: "#FFFFFF",
+    color: t.colors.textOnAccent,
     fontSize: 11,
     fontWeight: "700",
   },
